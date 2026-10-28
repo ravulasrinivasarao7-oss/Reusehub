@@ -1,0 +1,89 @@
+// ReUseHub Prisma schema.
+// Part 1: SystemCheck (connectivity). Part 2: users, sessions, materials.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Placeholder model from Part 1 (kept so the existing "init" migration stays valid).
+model SystemCheck {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  @@map("system_checks")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  name         String     @db.VarChar(80)
+  email        String     @unique @db.VarChar(254)
+  passwordHash String     @db.VarChar(100) // bcrypt hash, never the password
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  sessions     Session[]
+  materials    Material[]
+
+  @@map("users")
+}
+
+// Server-side login sessions. The browser holds a random token in an httpOnly
+// cookie; only its SHA-256 hash is stored here.
+model Session {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique @db.VarChar(64)
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+enum MaterialCategory {
+  CARDBOARD
+  WOOD
+  PAPER
+  PLASTIC
+  METAL
+  FABRIC
+  GLASS
+  OTHER
+}
+
+enum MaterialCondition {
+  NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+  USED
+}
+
+model Material {
+  id          Int               @id @default(autoincrement())
+  title       String            @db.VarChar(120)
+  description String            @db.VarChar(2000)
+  category    MaterialCategory
+  quantity    Int
+  unit        String            @db.VarChar(30)
+  condition   MaterialCondition
+  location    String            @db.VarChar(120)
+  imageUrl    String?           @db.VarChar(500)
+  isAvailable Boolean           @default(true)
+  ownerId     Int
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([condition])
+  @@index([isAvailable, createdAt])
+  @@map("materials")
+}

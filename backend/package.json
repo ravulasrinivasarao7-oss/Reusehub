@@ -1,0 +1,29 @@
+{
+  "name": "reusehub-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ReUseHub backend API (Express + Prisma + PostgreSQL)",
+  "type": "module",
+  "main": "server.js",
+  "engines": { "node": ">=20.19.0" },
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js",
+    "test:api": "node scripts/api-test.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.0",
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.0"
+  }
+}
