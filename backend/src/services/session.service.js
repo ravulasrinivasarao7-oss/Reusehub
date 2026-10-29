@@ -40,7 +40,12 @@ export async function destroySession(token) {
   await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
-const baseCookieOptions = () => ({ httpOnly: true, sameSite: 'lax', secure: env.isProduction, path: '/' });
+const baseCookieOptions = () => ({
+httpOnly: true,
+sameSite: env.isProduction ? 'none' : 'lax',
+secure: env.isProduction,
+path: '/',
+});
 
 export function setSessionCookie(res, token) {
   res.cookie(SESSION_COOKIE, token, { ...baseCookieOptions(), maxAge: SESSION_TTL_MS });
