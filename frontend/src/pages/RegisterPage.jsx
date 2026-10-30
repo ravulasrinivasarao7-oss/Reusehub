@@ -8,7 +8,7 @@ export default function RegisterPage() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
 
-  const [values, setValues] = useState({ name: '', email: '', password: '' });
+  const [values, setValues] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -24,6 +24,8 @@ export default function RegisterPage() {
     if (values.name.trim().length < 2) found.name = 'Name must be at least 2 characters.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) found.email = 'Enter a valid email address.';
     if (values.password.length < 8) found.password = 'Password must be at least 8 characters.';
+    if (!values.confirmPassword) found.confirmPassword = 'Please confirm your password.';
+    else if (values.password !== values.confirmPassword) found.confirmPassword = 'Passwords do not match.';
     setErrors(found);
     if (Object.keys(found).length) return;
 
@@ -46,6 +48,7 @@ export default function RegisterPage() {
         <FormField id="name" label="Name" autoComplete="name" required value={values.name} onChange={set('name')} error={errors.name} />
         <FormField id="email" label="Email" type="email" autoComplete="email" required value={values.email} onChange={set('email')} error={errors.email} />
         <FormField id="password" label="Password" type="password" autoComplete="new-password" required value={values.password} onChange={set('password')} error={errors.password} hint="8–72 characters." />
+        <FormField id="confirmPassword" label="Confirm password" type="password" autoComplete="new-password" required value={values.confirmPassword} onChange={set('confirmPassword')} error={errors.confirmPassword} />
         <button type="submit" disabled={submitting} className="w-full rounded-lg bg-green-700 px-6 py-2.5 font-semibold text-white hover:bg-green-800 disabled:opacity-60">
           {submitting ? 'Creating account…' : 'Register'}
         </button>
