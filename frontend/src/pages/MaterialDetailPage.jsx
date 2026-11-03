@@ -4,6 +4,7 @@ import Alert from '../components/Alert.jsx';
 import AvailabilityBadge from '../components/AvailabilityBadge.jsx';
 import MaterialImage from '../components/MaterialImage.jsx';
 import OwnerActions from '../components/OwnerActions.jsx';
+import RequestMaterialButton from '../components/RequestMaterialButton.jsx';
 import Spinner from '../components/Spinner.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { categoryLabel, conditionLabel } from '../data/materialOptions.js';
@@ -91,6 +92,7 @@ export default function MaterialDetailPage() {
           />
         </div>
       )}
+      {!isOwner && <div className="mt-8 max-w-sm"><RequestMaterialButton material={material} /></div>}
     </article>
   );
 }

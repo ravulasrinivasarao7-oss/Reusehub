@@ -33,6 +33,8 @@ export const env = {
   port,
   // Comma-separated list allowed, e.g. "http://localhost:5173,http://127.0.0.1:5173"
   frontendOrigins: frontendUrl.split(',').map((origin) => origin.trim()).filter(Boolean),
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  emailFrom: process.env.EMAIL_FROM || '',
   nodeEnv: process.env.NODE_ENV || 'development',
   isProduction: process.env.NODE_ENV === 'production',
 };

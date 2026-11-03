@@ -1,6 +1,6 @@
 // End-to-end API test. Requires the backend running AND a migrated database.
 // Usage (from backend/):  npm run test:api
-// It creates two throw-away test users (emails like test-a-<timestamp>@example.com).
+// It creates throw-away test users (emails like test-a-<timestamp>@example.com).
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/config/database.js';
 
@@ -88,6 +88,15 @@ async function main() {
   check('weak password rejected (400)', r.status === 400 && r.json?.errors?.password);
   r = await anon.call('POST', '/auth/login', {});
   check('login with missing credentials rejected (400)', r.status === 400 && r.json?.errors?.email && r.json?.errors?.password);
+  r = await anon.call('POST', '/auth/forgot-password', { email: `missing-${stamp}@example.com` });
+  check(
+    'forgot password does not reveal unknown email addresses',
+    r.status === 200 && r.json?.message === 'If an account exists for that email, a password reset link has been sent.',
+  );
+  r = await anon.call('POST', '/auth/forgot-password', {});
+  check('forgot password rejects missing email (400)', r.status === 400 && r.json?.errors?.email);
+  r = await anon.call('POST', '/auth/reset-password', { token: 'invalid', password: PASSWORD });
+  check('password reset rejects invalid token (400)', r.status === 400 && r.json?.errors?.token);
 
   r = await a.call('GET', '/auth/me');
   check('GET /auth/me returns user A', r.status === 200 && r.json?.data?.user?.email === `test-a-${stamp}@example.com`);
@@ -95,6 +104,11 @@ async function main() {
   r = await b.call('POST', '/auth/register', { name: 'Test B', email: `test-b-${stamp}@example.com`, password: PASSWORD });
   check('register user B (201)', r.status === 201);
   const userB = r.json?.data?.user;
+  r = await anon.call('POST', '/auth/register', { name: 'Test C', email: `test-c-${stamp}@example.com`, password: PASSWORD });
+  check('register user C (201)', r.status === 201);
+  const c = new Client();
+  r = await c.call('POST', '/auth/login', { email: `test-c-${stamp}@example.com`, password: PASSWORD });
+  check('login user C (200)', r.status === 200);
 
   r = await a.call('POST', '/materials', { ...validMaterial, title: 'x', quantity: 0 });
   check('create with invalid data rejected (400) with field errors', r.status === 400 && r.json?.errors?.title && r.json?.errors?.quantity);
@@ -105,6 +119,34 @@ async function main() {
   check('create material (201)', r.status === 201 && r.json?.data?.id, JSON.stringify(r.json));
   check('owner comes from session, not from request body', r.json?.data?.owner?.id === userA?.id && r.json?.data?.ownerId === userA?.id);
   const id = r.json?.data?.id;
+
+  r = await anon.call('POST', `/requests/materials/${id}`);
+  check('unauthenticated material request is rejected (401)', r.status === 401);
+  r = await a.call('POST', `/requests/materials/${id}`);
+  check('owner cannot request their own material (403)', r.status === 403);
+  r = await b.call('POST', `/requests/materials/${id}`);
+  const requestId = r.json?.data?.id;
+  check('request material (201, Pending)', r.status === 201 && r.json?.data?.status === 'PENDING');
+  r = await b.call('POST', `/requests/materials/${id}`);
+  check('duplicate request is rejected (409)', r.status === 409);
+  r = await c.call('POST', `/requests/materials/${id}`);
+  const competingRequestId = r.json?.data?.id;
+  check('a second user can request while the material is available', r.status === 201 && r.json?.data?.status === 'PENDING');
+  r = await b.call('GET', '/requests/mine');
+  check('My Requests returns the requester’s material and Pending status',
+    r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.material.id === id && request.status === 'PENDING'));
+  r = await a.call('GET', '/requests/received');
+  check('Received Requests returns requests for the owner’s materials',
+    r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.requester.id === userB?.id));
+  r = await b.call('PATCH', `/requests/${requestId}/status`, { status: 'ACCEPTED' });
+  check('requester cannot accept their own request (403)', r.status === 403);
+  r = await a.call('PATCH', `/requests/${requestId}/status`, { status: 'ACCEPTED' });
+  check('owner can accept a pending request and material becomes unavailable',
+    r.status === 200 && r.json?.data?.status === 'ACCEPTED' && r.json?.data?.material?.isAvailable === false);
+  r = await a.call('PATCH', `/requests/${competingRequestId}/status`, { status: 'ACCEPTED' });
+  check('owner cannot accept a second request for the same material (409)', r.status === 409);
+  r = await c.call('POST', `/requests/materials/${id}`);
+  check('unavailable material cannot be requested (409)', r.status === 409);
 
   r = await b.call('GET', '/materials?search=cardboard&category=cardboard&condition=good&location=guntur');
   check('list with search + category + condition + location filters', r.status === 200 && r.json?.data?.some((m) => m.id === id));
@@ -143,6 +185,20 @@ async function main() {
   check('availability=unavailable filter shows it', r.json?.data?.some((m) => m.id === id));
   r = await a.call('PATCH', `/materials/${id}/availability`, { isAvailable: 'yes' });
   check('non-boolean availability rejected (400)', r.status === 400);
+
+  r = await a.call('POST', '/materials', { ...validMaterial, title: 'Request rejection test material' });
+  const rejectMaterialId = r.json?.data?.id;
+  r = await b.call('POST', `/requests/materials/${rejectMaterialId}`);
+  const rejectedRequestId = r.json?.data?.id;
+  r = await a.call('PATCH', `/requests/${rejectedRequestId}/status`, { status: 'REJECTED' });
+  check('owner can reject a pending request', r.status === 200 && r.json?.data?.status === 'REJECTED');
+
+  r = await a.call('POST', '/materials', { ...validMaterial, title: 'Request cancellation test material' });
+  const cancelMaterialId = r.json?.data?.id;
+  r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);
+  const cancelledRequestId = r.json?.data?.id;
+  r = await b.call('PATCH', `/requests/${cancelledRequestId}/status`, { status: 'CANCELLED' });
+  check('requester can cancel their own pending request', r.status === 200 && r.json?.data?.status === 'CANCELLED');
 
   r = await a.call('DELETE', `/materials/${id}`);
   check('owner can delete listing (200)', r.status === 200);

@@ -36,6 +36,8 @@ export default function Navbar() {
           <Link to="/materials" className={linkClass}>Browse Materials</Link>
           <a href="/#how-it-works" className={linkClass}>How It Works</a>
           {user && <Link to="/my-listings" className={linkClass}>My Listings</Link>}
+          {user && <Link to="/my-requests" className={linkClass}>My Requests</Link>}
+          {user && <Link to="/received-requests" className={linkClass}>Received Requests</Link>}
           {user && <Link to="/materials/new" className={linkClass}>Add Material</Link>}
         </nav>
 

@@ -2,8 +2,8 @@
 
 ReUseHub is a web application where businesses, offices, workshops, printing shops, and individuals can list unused materials (cardboard, wood, paper, plastic, metal, fabric, glass, …) so others can reuse them instead of throwing them away.
 
-**Status: Part 1 (setup, homepage, health checks) and Part 2 (accounts, sessions, material listings).**
-Requests/approvals, inventory, notifications, statistics, and the admin dashboard are not implemented yet.
+**Status: Part 1 (setup, homepage, health checks), Part 2 (accounts, sessions, password reset, material listings), and material requests/approvals.**
+Inventory, notifications, statistics, and the admin dashboard are not implemented yet.
 
 ## Technology stack
 
@@ -89,6 +89,8 @@ cp frontend/.env.example frontend/.env
 
 Keep these consistent: the port in `VITE_API_BASE_URL` must equal the backend `PORT`, and `FRONTEND_URL` must equal the address Vite serves on (`http://localhost:5173`). The backend refuses to start if `DATABASE_URL` is missing, malformed, or still contains the placeholder values. `.env` files are git-ignored.
 
+Password reset uses Resend. Set `RESEND_API_KEY` and `EMAIL_FROM` in the backend environment, using a sender address on a domain verified with Resend. Set `FRONTEND_URL` to the frontend origin; reset links use its first configured origin. Never put email-provider credentials in frontend environment variables or commit them.
+
 ## PostgreSQL database setup
 
 Create the database (replace `postgres` with your own PostgreSQL user if different):
@@ -152,7 +154,7 @@ If the database is unreachable the endpoint returns HTTP 503 with `{"success":fa
 
 In development the homepage shows a **Development diagnostics** panel (hidden in production builds) with the states *Checking connection…*, *Backend connected*, *Database connected*, and *Connection failed*.
 
-## Part 2: accounts and material listings
+## Part 2: accounts, password reset, and material listings
 
 ### Upgrading an existing Part 1 install
 
@@ -160,16 +162,16 @@ In development the homepage shows a **Development diagnostics** panel (hidden in
 cd backend
 npm install                                     # adds bcryptjs and cookie-parser
 npx prisma generate
-npx prisma migrate dev --name add_users_sessions_materials
+npx prisma migrate dev
 cd ../frontend && npm install
 ```
 
 (On Windows PowerShell with script execution blocked, use `npm.cmd` / `npx.cmd`.)
-No new environment variables are needed. Your existing `.env` files stay as they are.
+Password reset also requires `RESEND_API_KEY` and `EMAIL_FROM` in the backend environment.
 
 ### Database models
 
-`User`, `Session`, `Material` (+ enums `MaterialCategory`, `MaterialCondition`). A material belongs to its owner (`ownerId`, deleted with the user), with indexes on owner, category, condition and availability. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Field limits and the "quantity >= 1" rule are enforced by the API (Prisma cannot declare CHECK constraints).
+`User`, `Session`, `PasswordResetToken`, `Material`, and `MaterialRequest` (+ enums `MaterialCategory`, `MaterialCondition`, `MaterialRequestStatus`). A material belongs to its owner (`ownerId`, deleted with the user), and requests link a requester to a material; the `(materialId, requesterId)` unique constraint prevents duplicate requests. Request statuses are `PENDING`, `ACCEPTED`, `REJECTED`, and `CANCELLED`. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Password reset tokens are SHA-256 hashed in the database, expire after 30 minutes, and are single-use.
 
 ### API
 
@@ -179,6 +181,8 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 |---|---|---|
 | `POST /api/auth/register` | no | Create account and log in (201) |
 | `POST /api/auth/login` | no | Log in |
+| `POST /api/auth/forgot-password` | no | Email a one-time reset link if the account exists |
+| `POST /api/auth/reset-password` | no | Set a new password with the emailed token and invalidate sessions |
 | `POST /api/auth/logout` | no | End session |
 | `GET /api/auth/me` | yes | Current user (401 when logged out) |
 | `GET /api/materials` | yes | Available listings. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all`), `page`, `limit` (max 50) |
@@ -188,25 +192,33 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `PUT /api/materials/:id` | owner | Update |
 | `PATCH /api/materials/:id/availability` | owner | Body `{ "isAvailable": true|false }` |
 | `DELETE /api/materials/:id` | owner | Delete |
+| `POST /api/requests/materials/:materialId` | yes | Request an available material |
+| `GET /api/requests/mine` | yes | List your material requests and statuses |
+| `GET /api/requests/received` | yes | List requests for your materials |
+| `PATCH /api/requests/:id/status` | yes | Owner accepts/rejects, or requester cancels; body `{ "status": "ACCEPTED"|"REJECTED"|"CANCELLED" }` |
 
-Status codes: 400 validation, 401 not logged in, 403 not the owner, 404 not found, 409 duplicate email, 429 too many login attempts, 503 database unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Conditions: `NEW LIKE_NEW GOOD FAIR USED`. Images are **URLs only** (http/https); there is no file upload.
+Status codes: 400 validation, 401 not logged in, 403 unauthorized action, 404 not found, 409 conflict (for example duplicate request or unavailable material), 429 too many login attempts, 503 database unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Conditions: `NEW LIKE_NEW GOOD FAIR USED`. Images are **URLs only** (http/https); there is no file upload.
 
 Per your Part 2 brief, every materials endpoint requires login. To make browsing public later, move `router.use(requireAuth)` in `backend/src/routes/materials.routes.js` onto the write routes only.
 
 ### Frontend routes
 
-`/` home, `/login`, `/register`, `/materials` (search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`. Pages other than home, login and register redirect to login when logged out.
+`/` home, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/materials` (search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`, `/my-requests`, `/received-requests`. Pages other than home, login, register, and password reset pages redirect to login when logged out.
+
+### Password reset deployment
+
+Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_URL` on the backend host. Review the additive password-reset and material-request migrations, then apply approved migrations with `npx prisma migrate deploy`. The material-request migration adds only the status enum, `material_requests` table, indexes, and foreign keys; it does not recreate or modify existing users, materials, sessions, or request data. For an existing database with tables but no Prisma migration history, first verify its schema matches `backend/prisma/migrations/0_init/migration.sql`; only then baseline that initial migration once with `npx prisma migrate resolve --applied 0_init`, followed by `npx prisma migrate deploy`. Do not run `migrate reset` on a database with user data. Do not apply migrations to production until they have been reviewed and approved.
 
 ### Automated API test
 
-With the backend running and the migration applied:
+With the backend running and the migrations applied to a **development/test database**:
 
 ```bash
 cd backend
 npm run test:api       # npm.cmd run test:api on restricted PowerShell
 ```
 
-It registers two throw-away users and checks create / list / filter / update / delete, validation errors, the 401 / 403 rules (user B cannot edit, toggle or delete user A's listing), and logout. It leaves the two test users in your dev database.
+It registers throw-away users and checks accounts, materials, request creation, duplicate and ownership restrictions, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
 
 ## Troubleshooting
 

@@ -8,7 +8,7 @@ cd backend  && npm install && cd ..
 cd frontend && npm install && cd ..
 
 # 2. Environment files
-cp backend/.env.example  backend/.env     # then edit DATABASE_URL
+cp backend/.env.example  backend/.env     # then edit DATABASE_URL and email settings
 cp frontend/.env.example frontend/.env
 
 # 3. Database
@@ -50,10 +50,16 @@ npx prisma migrate reset     # DROPS all data in the dev database, then re-appli
 ```bash
 cd backend && npm install
 npx prisma generate
-npx prisma migrate dev --name add_users_sessions_materials
+npx prisma migrate dev
 npm run dev                  # terminal 1
 npm run test:api             # terminal 2, optional end-to-end API check
 cd ../frontend && npm install && npm run dev
 ```
 
 Manual browser checks: register, create a listing, edit it, mark it unavailable, filter on /materials, delete it from My Listings, log out and confirm /my-listings redirects to login. Register a second account and confirm it sees no Edit/Delete buttons on the first account's listing.
+
+## Password reset email setup
+
+Set `RESEND_API_KEY` and `EMAIL_FROM` in `backend/.env` and in the backend hosting provider. The sender must be on a domain verified with Resend. Set `FRONTEND_URL` to the frontend origin (for example `https://your-site.vercel.app`) so reset links point back to the deployed app. Apply the additive schema migration with `npx prisma migrate dev` against a development database or `npx prisma migrate deploy` in production.
+
+If a production database already has application tables but no Prisma migration history, verify that its schema matches `backend/prisma/migrations/0_init/migration.sql` before baselining. If it matches, run `npx prisma migrate resolve --applied 0_init` once, then `npx prisma migrate deploy`. Do not use `migrate reset` on a database containing user data. Never put Resend credentials in frontend environment variables or commit them.

@@ -11,3 +11,7 @@ npm-debug.log*
 !.vscode/extensions.json
 .idea/
 coverage/
+# Database backups
+backups/
+*.dump
+*.backup

@@ -67,6 +67,8 @@ export const getDatabaseHealth = () => request('/health/database');
 export const authApi = {
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   login: (payload) => request('/auth/login', { method: 'POST', body: payload }),
+  requestPasswordReset: (payload) => request('/auth/forgot-password', { method: 'POST', body: payload }),
+  resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: payload }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
 };
@@ -81,4 +83,13 @@ export const materialsApi = {
   setAvailability: (id, isAvailable) =>
     request(`/materials/${id}/availability`, { method: 'PATCH', body: { isAvailable } }),
   remove: (id) => request(`/materials/${id}`, { method: 'DELETE' }),
+};
+
+// --- Material requests ---
+export const requestsApi = {
+  create: (materialId) => request(`/requests/materials/${materialId}`, { method: 'POST' }),
+  mine: () => request('/requests/mine'),
+  received: () => request('/requests/received'),
+  updateStatus: (id, status) =>
+    request(`/requests/${id}/status`, { method: 'PATCH', body: { status } }),
 };

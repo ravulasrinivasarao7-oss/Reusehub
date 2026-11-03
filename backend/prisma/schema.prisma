@@ -19,16 +19,31 @@ model SystemCheck {
 }
 
 model User {
-  id           Int        @id @default(autoincrement())
-  name         String     @db.VarChar(80)
-  email        String     @unique @db.VarChar(254)
-  passwordHash String     @db.VarChar(100) // bcrypt hash, never the password
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  sessions     Session[]
-  materials    Material[]
+  id                  Int                  @id @default(autoincrement())
+  name                String               @db.VarChar(80)
+  email               String               @unique @db.VarChar(254)
+  passwordHash        String               @db.VarChar(100) // bcrypt hash, never the password
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  materials           Material[]
+  requestsMade        MaterialRequest[]    @relation("MaterialRequestRequester")
 
   @@map("users")
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  tokenHash String   @unique @db.VarChar(64)
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // Server-side login sessions. The browser holds a random token in an httpOnly
@@ -78,6 +93,7 @@ model Material {
   isAvailable Boolean           @default(true)
   ownerId     Int
   owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  requests    MaterialRequest[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -86,4 +102,28 @@ model Material {
   @@index([condition])
   @@index([isAvailable, createdAt])
   @@map("materials")
+}
+
+enum MaterialRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+model MaterialRequest {
+  id          Int                   @id @default(autoincrement())
+  materialId  Int
+  requesterId Int
+  status      MaterialRequestStatus @default(PENDING)
+  material    Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  requester   User                  @relation("MaterialRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([materialId, requesterId])
+  @@index([requesterId, createdAt])
+  @@index([materialId, status])
+  @@index([materialId, createdAt])
+  @@map("material_requests")
 }

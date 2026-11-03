@@ -5,6 +5,7 @@ import FormField from '../components/FormField.jsx';
 import MaterialCard from '../components/MaterialCard.jsx';
 import Pagination from '../components/Pagination.jsx';
 import Spinner from '../components/Spinner.jsx';
+import RequestMaterialButton from '../components/RequestMaterialButton.jsx';
 import { CATEGORIES, CONDITIONS } from '../data/materialOptions.js';
 import { materialsApi } from '../services/api.js';
 
@@ -94,7 +95,13 @@ export default function MaterialsPage() {
               </p>
               {state.items.length > 0 ? (
                 <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {state.items.map((material) => <MaterialCard key={material.id} material={material} />)}
+                  {state.items.map((material) => (
+                    <MaterialCard
+                      key={material.id}
+                      material={material}
+                      actions={<RequestMaterialButton material={material} />}
+                    />
+                  ))}
                 </div>
               ) : (
                 <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-700">

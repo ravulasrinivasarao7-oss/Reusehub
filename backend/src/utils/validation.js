@@ -36,6 +36,27 @@ export function validateLogin(body) {
   return { data: { email, password }, errors };
 }
 
+export function validatePasswordResetRequest(body) {
+  const src = body && typeof body === 'object' ? body : {};
+  const errors = {};
+  const email = singleLine(src.email).toLowerCase();
+  if (!EMAIL_RE.test(email) || email.length > 254) errors.email = 'Enter a valid email address.';
+  return { data: { email }, errors };
+}
+
+export function validatePasswordReset(body) {
+  const src = body && typeof body === 'object' ? body : {};
+  const errors = {};
+  const token = typeof src.token === 'string' ? src.token : '';
+  const password = typeof src.password === 'string' ? src.password : '';
+
+  if (!/^[0-9a-f]{64}$/i.test(token)) errors.token = 'This password reset link is invalid or expired.';
+  if (password.length < 8 || Buffer.byteLength(password) > 72) {
+    errors.password = 'Password must be 8–72 characters.';
+  }
+  return { data: { token: token.toLowerCase(), password }, errors };
+}
+
 function parseImageUrl(raw) {
   if (raw === undefined || raw === null) return { value: null };
   if (typeof raw !== 'string') return { error: 'Image URL must be text.' };
