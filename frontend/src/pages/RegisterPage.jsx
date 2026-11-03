@@ -12,18 +12,42 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const passwordBytes = new TextEncoder().encode(values.password).length;
+  const passwordLength = [...values.password].length;
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
+  const passwordErrors = [
+    [passwordLength >= 8, 'Password must contain at least 8 characters.'],
+    [/[A-Z]/.test(values.password), 'Password must contain at least one uppercase letter.'],
+    [/[a-z]/.test(values.password), 'Password must contain at least one lowercase letter.'],
+    [/[0-9]/.test(values.password), 'Password must contain at least one number.'],
+    [/[^A-Za-z0-9\s]/.test(values.password), 'Password must contain at least one special character.'],
+    [passwordBytes <= 72, 'Password must not exceed 72 UTF-8 bytes.'],
+  ].filter(([valid]) => !valid).map(([, message]) => message);
+  const passwordError = passwordErrors.length
+    ? passwordErrors
+    : errors.password;
+  const confirmPasswordError = values.confirmPassword
+    ? (values.password !== values.confirmPassword ? 'Passwords do not match.' : undefined)
+    : errors.confirmPassword;
 
   if (user) return <Navigate to="/materials" replace />;
 
-  const set = (field) => (event) => setValues({ ...values, [field]: event.target.value });
+  const set = (field) => (event) => {
+    setValues({ ...values, [field]: event.target.value });
+    setErrors((previous) => {
+      const { [field]: _error, ...remaining } = previous;
+      return remaining;
+    });
+  };
 
   async function handleSubmit(event) {
     event.preventDefault();
     setFormError('');
+    setHasAttemptedSubmit(true);
     const found = {};
     if (values.name.trim().length < 2) found.name = 'Name must be at least 2 characters.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) found.email = 'Enter a valid email address.';
-    if (values.password.length < 8) found.password = 'Password must be at least 8 characters.';
+    if (passwordErrors.length) found.password = passwordErrors;
     if (!values.confirmPassword) found.confirmPassword = 'Please confirm your password.';
     else if (values.password !== values.confirmPassword) found.confirmPassword = 'Passwords do not match.';
     setErrors(found);
@@ -47,8 +71,8 @@ export default function RegisterPage() {
         <Alert type="error">{formError}</Alert>
         <FormField id="name" label="Name" autoComplete="name" required value={values.name} onChange={set('name')} error={errors.name} />
         <FormField id="email" label="Email" type="email" autoComplete="email" required value={values.email} onChange={set('email')} error={errors.email} />
-        <FormField id="password" label="Password" type="password" autoComplete="new-password" required value={values.password} onChange={set('password')} error={errors.password} hint="8–72 characters." />
-        <FormField id="confirmPassword" label="Confirm password" type="password" autoComplete="new-password" required value={values.confirmPassword} onChange={set('confirmPassword')} error={errors.confirmPassword} />
+        <FormField id="password" label="Password" type="password" showPasswordToggle autoComplete="new-password" required value={values.password} onChange={set('password')} error={hasAttemptedSubmit ? passwordError : undefined} />
+        <FormField id="confirmPassword" label="Confirm password" type="password" showPasswordToggle autoComplete="new-password" required value={values.confirmPassword} onChange={set('confirmPassword')} error={confirmPasswordError} />
         <button type="submit" disabled={submitting} className="w-full rounded-lg bg-green-700 px-6 py-2.5 font-semibold text-white hover:bg-green-800 disabled:opacity-60">
           {submitting ? 'Creating account…' : 'Register'}
         </button>

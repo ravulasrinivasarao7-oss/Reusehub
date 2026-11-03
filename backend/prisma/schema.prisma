@@ -23,6 +23,9 @@ model User {
   name                String               @db.VarChar(80)
   email               String               @unique @db.VarChar(254)
   passwordHash        String               @db.VarChar(100) // bcrypt hash, never the password
+  phone               String?              @db.VarChar(30)
+  location            String?              @db.VarChar(120)
+  avatarUrl           String?              @db.VarChar(500)
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   sessions            Session[]

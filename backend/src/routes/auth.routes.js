@@ -6,6 +6,8 @@ import {
   register,
   requestPasswordReset,
   resetPassword,
+  getProfile,
+  updateProfile,
 } from '../controllers/auth.controller.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rateLimit.js';
@@ -33,5 +35,7 @@ router.post('/forgot-password', passwordResetRequestLimiter, requestPasswordRese
 router.post('/reset-password', passwordResetLimiter, resetPassword);
 router.post('/logout', logout);
 router.get('/me', requireAuth, me);
+router.get('/profile', requireAuth, getProfile);
+router.put('/profile', requireAuth, updateProfile);
 
 export default router;

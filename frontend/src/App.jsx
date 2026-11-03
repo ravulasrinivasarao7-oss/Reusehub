@@ -15,6 +15,7 @@ import MyListingsPage from './pages/MyListingsPage.jsx';
 import MyRequestsPage from './pages/MyRequestsPage.jsx';
 import ReceivedRequestsPage from './pages/ReceivedRequestsPage.jsx';
 import ComingSoonPage from './pages/ComingSoonPage.jsx';
+import ProfilePage from './pages/ProfilePage.jsx';
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/my-listings" element={<ProtectedRoute><MyListingsPage /></ProtectedRoute>} />
           <Route path="/my-requests" element={<ProtectedRoute><MyRequestsPage /></ProtectedRoute>} />
           <Route path="/received-requests" element={<ProtectedRoute><ReceivedRequestsPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="*" element={<ComingSoonPage title="Page not found" notFound />} />
         </Routes>
       </main>

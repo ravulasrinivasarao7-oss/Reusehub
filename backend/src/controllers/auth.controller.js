@@ -7,6 +7,7 @@ import {
   validateLogin,
   validatePasswordReset,
   validatePasswordResetRequest,
+  validateProfileUpdate,
   validateRegister,
 } from '../utils/validation.js';
 import {
@@ -27,6 +28,15 @@ const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
 const dummyHash = bcrypt.hashSync('reusehub-timing-placeholder', BCRYPT_ROUNDS);
 const hashResetToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const passwordResetMessage = 'If an account exists for that email, a password reset link has been sent.';
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  phone: true,
+  location: true,
+  avatarUrl: true,
+  createdAt: true,
+};
 
 export const register = asyncHandler(async (req, res) => {
   const { data, errors } = validateRegister(req.body);
@@ -37,7 +47,7 @@ export const register = asyncHandler(async (req, res) => {
   try {
     user = await prisma.user.create({
       data: { name: data.name, email: data.email, passwordHash },
-      select: { id: true, name: true, email: true },
+      select: publicUserSelect,
     });
   } catch (error) {
     if (error.code === 'P2002') {
@@ -59,7 +69,43 @@ export const login = asyncHandler(async (req, res) => {
   if (!record || !matches) throw new AppError(401, 'Invalid email or password.');
 
   setSessionCookie(res, await createSession(record.id));
-  res.json({ success: true, data: { user: { id: record.id, name: record.name, email: record.email } } });
+  const user = {
+    id: record.id,
+    name: record.name,
+    email: record.email,
+    phone: record.phone,
+    location: record.location,
+    avatarUrl: record.avatarUrl,
+    createdAt: record.createdAt,
+  };
+  res.json({ success: true, data: { user } });
+});
+
+export const getProfile = (req, res) => {
+  res.json({ success: true, data: { user: req.user } });
+};
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const { data, errors } = validateProfileUpdate(req.body);
+  if (Object.keys(errors).length) {
+    throw new AppError(400, 'Please correct the highlighted fields.', errors);
+  }
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.user.id },
+      data,
+      select: publicUserSelect,
+    });
+    res.json({ success: true, data: { user } });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      throw new AppError(409, 'An account with this email already exists.', {
+        email: 'This email is already registered.',
+      });
+    }
+    throw error;
+  }
 });
 
 export const requestPasswordReset = asyncHandler(async (req, res) => {

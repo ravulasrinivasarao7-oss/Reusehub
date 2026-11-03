@@ -71,6 +71,8 @@ export const authApi = {
   resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: payload }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   me: () => request('/auth/me'),
+  profile: () => request('/auth/profile'),
+  updateProfile: (payload) => request('/auth/profile', { method: 'PUT', body: payload }),
 };
 
 // --- Materials ---

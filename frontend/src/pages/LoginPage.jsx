@@ -43,7 +43,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-5">
         <Alert type="error">{formError}</Alert>
         <FormField id="email" label="Email" type="email" autoComplete="email" required value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} error={errors.email} />
-        <FormField id="password" label="Password" type="password" autoComplete="current-password" required value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} error={errors.password} />
+        <FormField id="password" label="Password" type="password" showPasswordToggle autoComplete="current-password" required value={values.password} onChange={(e) => setValues({ ...values, password: e.target.value })} error={errors.password} />
         <div className="-mt-3 text-right text-sm">
           <Link to="/forgot-password" className="font-semibold text-green-800 underline">Forgot password?</Link>
         </div>

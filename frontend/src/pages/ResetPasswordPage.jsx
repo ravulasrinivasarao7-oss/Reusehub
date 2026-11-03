@@ -58,6 +58,7 @@ export default function ResetPasswordPage() {
             id="password"
             label="New password"
             type="password"
+            showPasswordToggle
             autoComplete="new-password"
             required
             value={values.password}
@@ -69,6 +70,7 @@ export default function ResetPasswordPage() {
             id="confirmPassword"
             label="Confirm new password"
             type="password"
+            showPasswordToggle
             autoComplete="new-password"
             required
             value={values.confirmPassword}

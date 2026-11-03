@@ -21,9 +21,70 @@ export function validateRegister(body) {
 
   if (name.length < 2 || name.length > 80) errors.name = 'Name must be 2–80 characters.';
   if (!EMAIL_RE.test(email) || email.length > 254) errors.email = 'Enter a valid email address.';
-  // bcrypt only uses the first 72 bytes, so cap the length.
-  if (password.length < 8 || Buffer.byteLength(password) > 72) errors.password = 'Password must be 8–72 characters.';
+  // bcrypt only uses the first 72 bytes, so cap both character and byte length.
+  const passwordLength = [...password].length;
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialCharacter = /[^A-Za-z0-9\s]/.test(password);
+  if (
+    passwordLength < 8
+    || passwordLength > 72
+    || Buffer.byteLength(password) > 72
+    || !hasUppercase
+    || !hasLowercase
+    || !hasNumber
+    || !hasSpecialCharacter
+  ) {
+    errors.password = 'Password must be 8–72 characters, use at most 72 UTF-8 bytes, and include uppercase and lowercase letters, a number, and a special character.';
+  }
   return { data: { name, email, password }, errors };
+}
+
+export function validateProfileUpdate(body) {
+  const src = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const errors = {};
+  const name = singleLine(src.name);
+  const email = singleLine(src.email).toLowerCase();
+  const phone = singleLine(src.phone);
+  const location = singleLine(src.location);
+  const rawAvatarUrl = typeof src.avatarUrl === 'string' ? stripControl(src.avatarUrl).trim() : '';
+
+  if (name.length < 2 || name.length > 80) errors.name = 'Name must be 2–80 characters.';
+  if (!EMAIL_RE.test(email) || email.length > 254) errors.email = 'Enter a valid email address.';
+  if (phone && (phone.length < 7 || phone.length > 30 || !/^[+0-9().\-\s]+$/.test(phone))) {
+    errors.phone = 'Enter a valid phone number (7–30 characters).';
+  }
+  if (location.length > 120) errors.location = 'Location must be at most 120 characters.';
+
+  let avatarUrl = null;
+  if (rawAvatarUrl) {
+    if (rawAvatarUrl.length > 500) {
+      errors.avatarUrl = 'Profile picture URL must be at most 500 characters.';
+    } else {
+      try {
+        const url = new URL(rawAvatarUrl);
+        if (
+          !['http:', 'https:'].includes(url.protocol)
+          || url.username
+          || url.password
+        ) {
+          errors.avatarUrl = 'Enter a valid profile picture URL starting with http:// or https://.';
+        } else if (url.href.length > 500) {
+          errors.avatarUrl = 'Profile picture URL must be at most 500 characters.';
+        } else {
+          avatarUrl = url.href;
+        }
+      } catch {
+        errors.avatarUrl = 'Enter a valid profile picture URL starting with http:// or https://.';
+      }
+    }
+  }
+
+  return {
+    data: { name, email, phone: phone || null, location: location || null, avatarUrl },
+    errors,
+  };
 }
 
 export function validateLogin(body) {

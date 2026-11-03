@@ -20,12 +20,24 @@ export async function createSession(userId) {
   return token;
 }
 
-/** Returns { id, name, email } for a valid, unexpired session token, otherwise null. */
+/** Returns safe profile fields for a valid, unexpired session token, otherwise null. */
 export async function getUserBySessionToken(token) {
   if (!isValidTokenShape(token)) return null;
   const session = await prisma.session.findUnique({
     where: { tokenHash: hashToken(token) },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          location: true,
+          avatarUrl: true,
+          createdAt: true,
+        },
+      },
+    },
   });
   if (!session) return null;
   if (session.expiresAt <= new Date()) {
