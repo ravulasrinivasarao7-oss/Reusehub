@@ -21,16 +21,26 @@ import ProfilePage from './pages/ProfilePage.jsx';
 export default function App() {
   const location = useLocation();
 
-  useEffect(() => {
-    if (location.pathname !== '/' || location.hash !== '#how-it-works') return undefined;
-    const frame = window.requestAnimationFrame(() => {
+  
+useEffect(() => {
+  const frame = window.requestAnimationFrame(() => {
+    if (location.pathname === '/' && location.hash === '#how-it-works') {
       document.getElementById('how-it-works')?.scrollIntoView({
         behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
         block: 'start',
       });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [location.pathname, location.hash]);
+    } else if (!location.hash) {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'auto',
+      });
+    }
+  });
+
+  return () => window.cancelAnimationFrame(frame);
+}, [location.pathname, location.hash]);
+
 
   return (
     <>
