@@ -4,9 +4,11 @@ import Alert from '../components/Alert.jsx';
 import MaterialImage from '../components/MaterialImage.jsx';
 import RequestStatusBadge from '../components/RequestStatusBadge.jsx';
 import Spinner from '../components/Spinner.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 import { requestsApi } from '../services/api.js';
 
 export default function MyRequestsPage() {
+  const { updateRequest } = useAuth();
   const [state, setState] = useState({ loading: true, error: '', items: [] });
   const [message, setMessage] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
@@ -25,6 +27,7 @@ export default function MyRequestsPage() {
     setState((current) => ({ ...current, error: '' }));
     try {
       const result = await requestsApi.updateStatus(request.id, 'CANCELLED');
+      updateRequest(result.data);
       setState((current) => ({
         ...current,
         items: current.items.map((item) => item.id === request.id ? result.data : item),

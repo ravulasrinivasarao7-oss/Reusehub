@@ -89,6 +89,8 @@ async function main() {
   r = await anon.call('POST', '/auth/login', {});
   check('login with missing credentials rejected (400)', r.status === 400 && r.json?.errors?.email && r.json?.errors?.password);
   r = await anon.call('POST', '/auth/forgot-password', { email: `missing-${stamp}@example.com` });
+  console.log('FORGOT PASSWORD STATUS:', r.status);
+  console.log('FORGOT PASSWORD RESPONSE:', JSON.stringify(r.json, null, 2));
   check(
     'forgot password does not reveal unknown email addresses',
     r.status === 200 && r.json?.message === 'If an account exists for that email, a password reset link has been sent.',
@@ -119,9 +121,34 @@ async function main() {
   check('create material (201)', r.status === 201 && r.json?.data?.id, JSON.stringify(r.json));
   check('owner comes from session, not from request body', r.json?.data?.owner?.id === userA?.id && r.json?.data?.ownerId === userA?.id);
   const id = r.json?.data?.id;
+  // Test multiple material filters BEFORE accepting the request
+  r = await b.call(
+    'GET',
+    '/materials?search=cardboard&category=cardboard&condition=good&location=guntur'
+  );
 
-  r = await anon.call('POST', `/requests/materials/${id}`);
-  check('unauthenticated material request is rejected (401)', r.status === 401);
+  check(
+    'list with search + category + condition + location filters',
+    r.status === 200 && r.json?.data?.some((m) => m.id === id)
+  );
+ const noSession = new Client();
+
+console.log('API BASE URL:', BASE);
+console.log('NO SESSION COOKIE BEFORE REQUEST:', JSON.stringify(noSession.cookie));
+console.log('ANON COOKIE:', JSON.stringify(anon.cookie));
+console.log('USER C COOKIE:', JSON.stringify(c.cookie));
+
+r = await noSession.call('POST', `/requests/materials/${id}`);
+
+console.log('NO SESSION COOKIE AFTER REQUEST:', JSON.stringify(noSession.cookie));
+console.log('UNAUTHENTICATED REQUEST STATUS:', r.status);
+console.log('UNAUTHENTICATED REQUEST RESPONSE:', JSON.stringify(r.json, null, 2));
+
+check(
+  'unauthenticated material request is rejected (401)',
+  r.status === 401,
+  JSON.stringify(r.json)
+);
   r = await a.call('POST', `/requests/materials/${id}`);
   check('owner cannot request their own material (403)', r.status === 403);
   r = await b.call('POST', `/requests/materials/${id}`);
@@ -130,8 +157,17 @@ async function main() {
   r = await b.call('POST', `/requests/materials/${id}`);
   check('duplicate request is rejected (409)', r.status === 409);
   r = await c.call('POST', `/requests/materials/${id}`);
-  const competingRequestId = r.json?.data?.id;
-  check('a second user can request while the material is available', r.status === 201 && r.json?.data?.status === 'PENDING');
+
+console.log('SECOND USER STATUS:', r.status);
+console.log('SECOND USER RESPONSE:', JSON.stringify(r.json, null, 2));
+
+const competingRequestId = r.json?.data?.id;
+
+check(
+  'a second user can request while the material is available',
+  r.status === 201 && r.json?.data?.status === 'PENDING',
+  JSON.stringify(r.json)
+);
   r = await b.call('GET', '/requests/mine');
   check('My Requests returns the requester’s material and Pending status',
     r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.material.id === id && request.status === 'PENDING'));
@@ -147,9 +183,11 @@ async function main() {
   check('owner cannot accept a second request for the same material (409)', r.status === 409);
   r = await c.call('POST', `/requests/materials/${id}`);
   check('unavailable material cannot be requested (409)', r.status === 409);
-
-  r = await b.call('GET', '/materials?search=cardboard&category=cardboard&condition=good&location=guntur');
-  check('list with search + category + condition + location filters', r.status === 200 && r.json?.data?.some((m) => m.id === id));
+  for (const term of ['<', '>', '&', '"']) {
+    const query = new URLSearchParams({ search: term });
+    r = await b.call('GET', `/materials?${query}`);
+    check(`search handles special character ${JSON.stringify(term)}`, r.status === 200);
+  }
   r = await b.call('GET', '/materials?category=METAL');
   check('category filter excludes non-matching listing', r.status === 200 && !r.json?.data?.some((m) => m.id === id));
   r = await b.call('GET', '/materials?category=NOPE');
@@ -192,6 +230,11 @@ async function main() {
   const rejectedRequestId = r.json?.data?.id;
   r = await a.call('PATCH', `/requests/${rejectedRequestId}/status`, { status: 'REJECTED' });
   check('owner can reject a pending request', r.status === 200 && r.json?.data?.status === 'REJECTED');
+  r = await b.call('POST', `/requests/materials/${rejectMaterialId}`);
+  const afterRejectedRequestId = r.json?.data?.id;
+  check('requester can request again after rejection', r.status === 201 && r.json?.data?.status === 'PENDING');
+  r = await b.call('POST', `/requests/materials/${rejectMaterialId}`);
+  check('second active request after rejection is prevented', r.status === 409);
 
   r = await a.call('POST', '/materials', { ...validMaterial, title: 'Request cancellation test material' });
   const cancelMaterialId = r.json?.data?.id;
@@ -199,6 +242,16 @@ async function main() {
   const cancelledRequestId = r.json?.data?.id;
   r = await b.call('PATCH', `/requests/${cancelledRequestId}/status`, { status: 'CANCELLED' });
   check('requester can cancel their own pending request', r.status === 200 && r.json?.data?.status === 'CANCELLED');
+  r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);
+  const reRequestedId = r.json?.data?.id;
+  check('requester can request again after cancellation', r.status === 201 && r.json?.data?.status === 'PENDING');
+  r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);
+  check('duplicate active request after cancellation is prevented', r.status === 409);
+  r = await b.call('GET', '/requests/mine');
+  check('cancelled and replacement requests remain in history',
+    r.status === 200
+      && r.json?.data?.some((request) => request.id === cancelledRequestId && request.status === 'CANCELLED')
+      && r.json?.data?.some((request) => request.id === reRequestedId && request.status === 'PENDING'));
 
   r = await a.call('DELETE', `/materials/${id}`);
   check('owner can delete listing (200)', r.status === 200);

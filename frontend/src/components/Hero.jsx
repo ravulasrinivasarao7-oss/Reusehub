@@ -8,7 +8,9 @@ export default function Hero() {
   function handleSubmit(event) {
     event.preventDefault();
     const term = query.trim();
-    navigate(term ? `/materials?search=${encodeURIComponent(term)}` : '/materials');
+    const params = new URLSearchParams();
+    if (term) params.set('search', term);
+    navigate(term ? `/materials?${params}` : '/materials');
   }
 
   return (

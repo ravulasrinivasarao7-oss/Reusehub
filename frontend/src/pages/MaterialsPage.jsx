@@ -27,7 +27,12 @@ export default function MaterialsPage() {
     materialsApi
       .list(Object.fromEntries(new URLSearchParams(query)))
       .then((res) => !cancelled && setState({ loading: false, error: '', items: res.data, meta: res.meta }))
-      .catch((error) => !cancelled && setState({ loading: false, error: error.message, items: [], meta: null }));
+      .catch(() => !cancelled && setState({
+        loading: false,
+        error: 'Search failed. Please try again.',
+        items: [],
+        meta: null,
+      }));
     return () => { cancelled = true; };
   }, [query]);
 

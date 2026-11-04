@@ -64,7 +64,7 @@ export default function Navbar() {
         <nav aria-label="Primary" className="order-3 flex w-full flex-wrap justify-center gap-2 sm:order-none sm:w-auto">
           <Link to="/" className={linkClass}>Home</Link>
           <Link to="/materials" className={linkClass}>Browse Materials</Link>
-          <a href="/#how-it-works" className={linkClass}>How It Works</a>
+          <Link to="/#how-it-works" className={linkClass}>How It Works</Link>
           {user && <Link to="/my-listings" className={linkClass}>My Listings</Link>}
           {user && <Link to="/my-requests" className={linkClass}>My Requests</Link>}
           {user && <Link to="/received-requests" className={linkClass}>Received Requests</Link>}

@@ -1,4 +1,5 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import './App.css';
 import Navbar from './components/Navbar.jsx';
 import Footer from './components/Footer.jsx';
@@ -18,6 +19,19 @@ import ComingSoonPage from './pages/ComingSoonPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 
 export default function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname !== '/' || location.hash !== '#how-it-works') return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('how-it-works')?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.hash]);
+
   return (
     <>
       <a href="#main" className="skip-link rounded bg-green-700 px-3 py-2 text-white">

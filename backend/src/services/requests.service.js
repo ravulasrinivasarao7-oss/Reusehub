@@ -9,10 +9,20 @@ const requestInclude = {
 };
 
 export async function createMaterialRequest(materialId, requesterId) {
+  console.log('REQUEST DEBUG:', {
+  materialId,
+  requesterId,
+});
   const material = await prisma.material.findUnique({ where: { id: materialId } });
   if (!material) throw new AppError(404, 'Material not found.');
   if (material.ownerId === requesterId) throw new AppError(403, 'You cannot request your own material.');
   if (!material.isAvailable) throw new AppError(409, 'This material is no longer available.');
+
+  const pendingRequest = await prisma.materialRequest.findFirst({
+    where: { materialId, requesterId, status: 'PENDING' },
+    select: { id: true },
+  });
+  if (pendingRequest) throw new AppError(409, 'You already have a pending request for this material.');
 
   try {
     return await prisma.materialRequest.create({
@@ -21,7 +31,7 @@ export async function createMaterialRequest(materialId, requesterId) {
     });
   } catch (error) {
     if (error.code === 'P2002') {
-      throw new AppError(409, 'You have already requested this material.');
+      throw new AppError(409, 'You already have a pending request for this material.');
     }
     throw error;
   }

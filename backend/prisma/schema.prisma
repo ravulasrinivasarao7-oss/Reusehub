@@ -124,7 +124,6 @@ model MaterialRequest {
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
-  @@unique([materialId, requesterId])
   @@index([requesterId, createdAt])
   @@index([materialId, status])
   @@index([materialId, createdAt])
