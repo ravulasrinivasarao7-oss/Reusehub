@@ -17,9 +17,12 @@ import MyRequestsPage from './pages/MyRequestsPage.jsx';
 import ReceivedRequestsPage from './pages/ReceivedRequestsPage.jsx';
 import ComingSoonPage from './pages/ComingSoonPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
+import Alert from './components/Alert.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 
 export default function App() {
   const location = useLocation();
+  const { authError } = useAuth();
 
   
 useEffect(() => {
@@ -48,6 +51,7 @@ useEffect(() => {
         Skip to main content
       </a>
       <Navbar />
+      {authError && <div className="mx-auto max-w-6xl px-4 pt-4"><Alert type="error">{authError}</Alert></div>}
       <main id="main">
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -55,9 +59,9 @@ useEffect(() => {
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/materials" element={<ProtectedRoute><MaterialsPage /></ProtectedRoute>} />
+          <Route path="/materials" element={<MaterialsPage />} />
           <Route path="/materials/new" element={<ProtectedRoute><MaterialFormPage mode="create" /></ProtectedRoute>} />
-          <Route path="/materials/:id" element={<ProtectedRoute><MaterialDetailPage /></ProtectedRoute>} />
+          <Route path="/materials/:id" element={<MaterialDetailPage />} />
           <Route path="/materials/:id/edit" element={<ProtectedRoute><MaterialFormPage mode="edit" /></ProtectedRoute>} />
           <Route path="/my-listings" element={<ProtectedRoute><MyListingsPage /></ProtectedRoute>} />
           <Route path="/my-requests" element={<ProtectedRoute><MyRequestsPage /></ProtectedRoute>} />

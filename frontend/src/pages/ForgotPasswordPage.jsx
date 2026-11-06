@@ -1,15 +1,21 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import Alert from '../components/Alert.jsx';
 import FormField from '../components/FormField.jsx';
+import Spinner from '../components/Spinner.jsx';
 import { authApi } from '../services/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 export default function ForgotPasswordPage() {
+  const { user, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [fieldError, setFieldError] = useState('');
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  if (loading) return <Spinner label="Checking your session…" />;
+  if (user) return <Navigate to="/materials" replace />;
 
   async function handleSubmit(event) {
     event.preventDefault();

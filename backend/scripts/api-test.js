@@ -55,13 +55,14 @@ async function main() {
   const a = new Client();
   const b = new Client();
   const anon = new Client();
+  const publicClient = new Client();
   const invalidSession = new Client();
 
-  let r = await anon.call('GET', '/health');
+  let r = await publicClient.call('GET', '/health');
   check('health endpoint responds 200', r.status === 200 && r.json?.success === true);
 
-  r = await anon.call('GET', '/materials');
-  check('unauthenticated list is rejected (401)', r.status === 401);
+  r = await publicClient.call('GET', '/materials');
+  check('unauthenticated visitor can browse available materials (200)', r.status === 200 && Array.isArray(r.json?.data));
   r = await anon.call('POST', '/materials', validMaterial);
   check('unauthenticated create is rejected (401)', r.status === 401);
   invalidSession.cookie = 'reusehub_session=invalid';
@@ -100,7 +101,7 @@ async function main() {
   r = await anon.call('POST', '/auth/reset-password', { token: 'invalid', password: PASSWORD });
   check('password reset rejects invalid token (400)', r.status === 400 && r.json?.errors?.token);
 
-  r = await a.call('GET', '/auth/me');
+  r =  await a.call('GET', '/auth/me');
   check('GET /auth/me returns user A', r.status === 200 && r.json?.data?.user?.email === `test-a-${stamp}@example.com`);
 
   r = await b.call('POST', '/auth/register', { name: 'Test B', email: `test-b-${stamp}@example.com`, password: PASSWORD });
@@ -121,6 +122,11 @@ async function main() {
   check('create material (201)', r.status === 201 && r.json?.data?.id, JSON.stringify(r.json));
   check('owner comes from session, not from request body', r.json?.data?.owner?.id === userA?.id && r.json?.data?.ownerId === userA?.id);
   const id = r.json?.data?.id;
+  r = await publicClient.call('GET', `/materials?search=cardboard&category=CARDBOARD`);
+  check('signed-out visitor can search and filter materials', r.status === 200 && r.json?.data?.some((m) => m.id === id));
+  check('public listing omits owner identifiers', !('ownerId' in (r.json?.data?.find((m) => m.id === id) || {})) && !('id' in (r.json?.data?.find((m) => m.id === id)?.owner || {})));
+  r = await publicClient.call('GET', `/materials/${id}`);
+  check('signed-out visitor can view an available material', r.status === 200 && r.json?.data?.id === id && !('ownerId' in r.json.data));
   // Test multiple material filters BEFORE accepting the request
   r = await b.call(
     'GET',
@@ -151,9 +157,11 @@ check(
 );
   r = await a.call('POST', `/requests/materials/${id}`);
   check('owner cannot request their own material (403)', r.status === 403);
-  r = await b.call('POST', `/requests/materials/${id}`);
+  r = await b.call('POST', `/requests/materials/${id}`, { message: 'I can reuse these boxes for community donations.' });
   const requestId = r.json?.data?.id;
-  check('request material (201, Pending)', r.status === 201 && r.json?.data?.status === 'PENDING');
+  check('request material with an optional message (201, Pending)', r.status === 201 && r.json?.data?.status === 'PENDING' && r.json?.data?.message === 'I can reuse these boxes for community donations.');
+  r = await b.call('POST', `/requests/materials/${id}`, { message: 'x'.repeat(501) });
+  check('request message over 500 characters is rejected (400)', r.status === 400 && r.json?.errors?.message);
   r = await b.call('POST', `/requests/materials/${id}`);
   check('duplicate request is rejected (409)', r.status === 409);
   r = await c.call('POST', `/requests/materials/${id}`);
@@ -172,8 +180,8 @@ check(
   check('My Requests returns the requester’s material and Pending status',
     r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.material.id === id && request.status === 'PENDING'));
   r = await a.call('GET', '/requests/received');
-  check('Received Requests returns requests for the owner’s materials',
-    r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.requester.id === userB?.id));
+  check('owner sees request message in received requests',
+    r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.requester.id === userB?.id && request.message === 'I can reuse these boxes for community donations.'));
   r = await b.call('PATCH', `/requests/${requestId}/status`, { status: 'ACCEPTED' });
   check('requester cannot accept their own request (403)', r.status === 403);
   r = await a.call('PATCH', `/requests/${requestId}/status`, { status: 'ACCEPTED' });
@@ -221,6 +229,10 @@ check(
   check('unavailable listing hidden from default list', !r.json?.data?.some((m) => m.id === id));
   r = await b.call('GET', '/materials?availability=unavailable&search=Updated cardboard');
   check('availability=unavailable filter shows it', r.json?.data?.some((m) => m.id === id));
+  r = await publicClient.call('GET', '/materials?availability=unavailable&search=Updated cardboard');
+  check('signed-out visitors cannot browse unavailable listings', r.status === 200 && !r.json?.data?.some((m) => m.id === id));
+  r = await publicClient.call('GET', `/materials/${id}`);
+  check('signed-out visitors cannot view unavailable listing details (404)', r.status === 404);
   r = await a.call('PATCH', `/materials/${id}/availability`, { isAvailable: 'yes' });
   check('non-boolean availability rejected (400)', r.status === 400);
 
@@ -240,6 +252,7 @@ check(
   const cancelMaterialId = r.json?.data?.id;
   r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);
   const cancelledRequestId = r.json?.data?.id;
+  check('request without a message is accepted and stored as null', r.status === 201 && r.json?.data?.message === null);
   r = await b.call('PATCH', `/requests/${cancelledRequestId}/status`, { status: 'CANCELLED' });
   check('requester can cancel their own pending request', r.status === 200 && r.json?.data?.status === 'CANCELLED');
   r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);

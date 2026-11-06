@@ -36,8 +36,13 @@ async function loadOwned(req) {
 export const list = asyncHandler(async (req, res) => {
   const { filters, errors } = parseListQuery(req.query, { defaultAvailability: 'available' });
   requireValid({ data: filters, errors }, 'Invalid search or filter values.');
+  if (!req.user) filters.availability = 'available';
   const { items, meta } = await listMaterials(filters);
-  res.json({ success: true, data: items, meta });
+  const data = req.user ? items : items.map(({ ownerId, owner, ...material }) => ({
+    ...material,
+    owner: owner ? { name: owner.name } : null,
+  }));
+  res.json({ success: true, data, meta });
 });
 
 export const mine = asyncHandler(async (req, res) => {
@@ -49,7 +54,15 @@ export const mine = asyncHandler(async (req, res) => {
 
 export const getOne = asyncHandler(async (req, res) => {
   const material = await findMaterialById(idFrom(req));
-  if (!material) throw new AppError(404, 'Material not found.');
+  if (!material || (!req.user && !material.isAvailable)) throw new AppError(404, 'Material not found.');
+  if (!req.user) {
+    const { ownerId, owner, ...publicMaterial } = material;
+    res.json({
+      success: true,
+      data: { ...publicMaterial, owner: owner ? { name: owner.name } : null },
+    });
+    return;
+  }
   res.json({ success: true, data: material });
 });
 

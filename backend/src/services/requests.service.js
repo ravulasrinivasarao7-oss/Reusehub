@@ -8,11 +8,7 @@ const requestInclude = {
   requester: { select: { id: true, name: true } },
 };
 
-export async function createMaterialRequest(materialId, requesterId) {
-  console.log('REQUEST DEBUG:', {
-  materialId,
-  requesterId,
-});
+export async function createMaterialRequest(materialId, requesterId, message = null) {
   const material = await prisma.material.findUnique({ where: { id: materialId } });
   if (!material) throw new AppError(404, 'Material not found.');
   if (material.ownerId === requesterId) throw new AppError(403, 'You cannot request your own material.');
@@ -26,7 +22,7 @@ export async function createMaterialRequest(materialId, requesterId) {
 
   try {
     return await prisma.materialRequest.create({
-      data: { materialId, requesterId },
+      data: { materialId, requesterId, message },
       include: requestInclude,
     });
   } catch (error) {

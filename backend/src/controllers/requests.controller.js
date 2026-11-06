@@ -1,6 +1,6 @@
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { parseId } from '../utils/validation.js';
+import { parseId, validateMaterialRequestInput } from '../utils/validation.js';
 import {
   changeRequestStatus,
   createMaterialRequest,
@@ -16,7 +16,9 @@ function idFrom(value, message = 'Invalid request id.') {
 
 export const create = asyncHandler(async (req, res) => {
   const materialId = idFrom(req.params.materialId, 'Invalid material id.');
-  const request = await createMaterialRequest(materialId, req.user.id);
+  const { data, errors } = validateMaterialRequestInput(req.body);
+  if (Object.keys(errors).length) throw new AppError(400, 'Invalid material request.', errors);
+  const request = await createMaterialRequest(materialId, req.user.id, data.message);
   res.status(201).json({ success: true, data: request });
 });
 

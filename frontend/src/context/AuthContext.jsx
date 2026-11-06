@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
   const [requests, setRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [requestsError, setRequestsError] = useState('');
@@ -20,7 +21,9 @@ export function AuthProvider({ children }) {
         setRequestsLoading(true);
         setUser(res.data.user);
       })
-      .catch(() => {})
+      .catch((error) => {
+        if (!cancelled && error.status !== 401) setAuthError(error.message);
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, []);
@@ -51,6 +54,7 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (credentials) => {
     const res = await authApi.login(credentials);
+    setAuthError('');
     setRequests([]);
     setRequestsError('');
     setRequestsLoading(true);
@@ -59,6 +63,7 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (details) => {
     const res = await authApi.register(details);
+    setAuthError('');
     setRequests([]);
     setRequestsError('');
     setRequestsLoading(true);
@@ -90,6 +95,7 @@ export function AuthProvider({ children }) {
     () => ({
       user,
       loading,
+      authError,
       login,
       register,
       logout,
@@ -99,7 +105,7 @@ export function AuthProvider({ children }) {
       requestsError,
       updateRequest,
     }),
-    [user, loading, login, register, logout, updateProfile, requests, requestsLoading, requestsError, updateRequest],
+    [user, loading, authError, login, register, logout, updateProfile, requests, requestsLoading, requestsError, updateRequest],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

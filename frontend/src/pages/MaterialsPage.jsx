@@ -8,6 +8,7 @@ import Spinner from '../components/Spinner.jsx';
 import RequestMaterialButton from '../components/RequestMaterialButton.jsx';
 import { CATEGORIES, CONDITIONS } from '../data/materialOptions.js';
 import { materialsApi } from '../services/api.js';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const FILTER_KEYS = ['search', 'category', 'condition', 'location', 'availability'];
 
@@ -15,6 +16,7 @@ const draftFromParams = (params) =>
   Object.fromEntries(FILTER_KEYS.map((key) => [key, params.get(key) || (key === 'availability' ? 'available' : '')]));
 
 export default function MaterialsPage() {
+  const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const [draft, setDraft] = useState(() => draftFromParams(params));
   const [state, setState] = useState({ loading: true, error: '', items: [], meta: null });
@@ -63,7 +65,7 @@ export default function MaterialsPage() {
     <section className="mx-auto max-w-6xl px-4 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold text-slate-900">Browse Materials</h1>
-        <Link to="/materials/new" className="rounded-lg bg-green-700 px-5 py-2 font-semibold text-white hover:bg-green-800">Add Material</Link>
+        <Link to={user ? '/materials/new' : '/login'} className="rounded-lg bg-green-700 px-5 py-2 font-semibold text-white hover:bg-green-800">{user ? 'Add Material' : 'Log in to add material'}</Link>
       </div>
 
       <form role="search" aria-label="Search and filter materials" onSubmit={applyFilters} className="mt-6 grid gap-4 rounded-xl border border-green-100 bg-green-50 p-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -79,8 +81,8 @@ export default function MaterialsPage() {
         <FormField id="f-location" label="Location" placeholder="e.g. Guntur" value={draft.location} onChange={setField('location')} />
         <FormField id="f-availability" label="Availability" as="select" value={draft.availability} onChange={setField('availability')}>
           <option value="available">Available only</option>
-          <option value="unavailable">Unavailable only</option>
-          <option value="all">All listings</option>
+          {user && <option value="unavailable">Unavailable only</option>}
+          {user && <option value="all">All listings</option>}
         </FormField>
         <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-2">
           <button type="submit" className="rounded-lg bg-green-700 px-5 py-2 font-semibold text-white hover:bg-green-800">Apply</button>

@@ -57,6 +57,7 @@ export default function ReceivedRequestsPage() {
                 </div>
                 <p className="mt-2 text-sm text-slate-700">Requested by: {item.requester.name}</p>
                 <p className="mt-1 text-sm text-slate-700">Received {new Date(item.createdAt).toLocaleDateString()}</p>
+                {item.message && <p className="mt-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><span className="font-semibold">Message:</span> {item.message}</p>}
                 <Link to={`/materials/${item.material.id}`} className="mt-3 inline-block text-sm font-semibold text-green-800 underline">View material</Link>
                 {item.status === 'PENDING' && (
                   <div className="mt-3 flex flex-wrap gap-2">

@@ -186,6 +186,22 @@ export function validateAvailabilityInput(body) {
   return { data: {}, errors: { isAvailable: 'isAvailable must be true or false.' } };
 }
 
+export function validateMaterialRequestInput(body) {
+  const src = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const errors = {};
+  let message = null;
+  if (src.message !== undefined) {
+    if (typeof src.message !== 'string') {
+      errors.message = 'Message must be text.';
+    } else {
+      message = multiLine(src.message);
+      if ([...message].length > 500) errors.message = 'Message must be at most 500 characters.';
+      if (!message) message = null;
+    }
+  }
+  return { data: { message }, errors };
+}
+
 // Parses ?search=&category=&condition=&location=&availability=&page=&limit=
 export function parseListQuery(query, { defaultAvailability = 'available' } = {}) {
   const errors = {};

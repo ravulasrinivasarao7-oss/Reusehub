@@ -118,6 +118,7 @@ model MaterialRequest {
   id          Int                   @id @default(autoincrement())
   materialId  Int
   requesterId Int
+  message     String?               @db.VarChar(500)
   status      MaterialRequestStatus @default(PENDING)
   material    Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
   requester   User                  @relation("MaterialRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)

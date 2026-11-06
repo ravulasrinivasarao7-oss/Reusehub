@@ -10,7 +10,7 @@ export default function HomePage() {
       <Hero />
       <section aria-labelledby="categories-heading" className="mx-auto max-w-6xl px-4 py-14">
         <h2 id="categories-heading" className="text-3xl font-bold text-slate-900">Browse by category</h2>
-        <p className="mt-2 text-slate-700">Real listings from the community. Log in to browse and share materials.</p>
+        <p className="mt-2 text-slate-700">Explore available community listings, then log in or register to request or share materials.</p>
         <ul className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {CATEGORIES.map((category) => (
             <li key={category.value}>

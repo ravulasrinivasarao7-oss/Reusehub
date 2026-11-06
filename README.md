@@ -30,7 +30,7 @@ reusehub/
 │   ├── src/
 │   │   ├── assets/
 │   │   ├── components/  Navbar, Hero, MaterialCard, ConnectionStatus, ...
-│   │   ├── data/        sampleMaterials.js (TEMPORARY demo data)
+│   │   ├── data/        materialOptions.js
 │   │   ├── pages/       HomePage, ComingSoonPage
 │   │   ├── services/api.js
 │   │   ├── App.jsx, App.css, index.css, main.jsx
@@ -171,7 +171,7 @@ Password reset also requires `RESEND_API_KEY` and `EMAIL_FROM` in the backend en
 
 ### Database models
 
-`User`, `Session`, `PasswordResetToken`, `Material`, and `MaterialRequest` (+ enums `MaterialCategory`, `MaterialCondition`, `MaterialRequestStatus`). A material belongs to its owner (`ownerId`, deleted with the user), and requests link a requester to a material; the `(materialId, requesterId)` unique constraint prevents duplicate requests. Request statuses are `PENDING`, `ACCEPTED`, `REJECTED`, and `CANCELLED`. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Password reset tokens are SHA-256 hashed in the database, expire after 30 minutes, and are single-use.
+`User`, `Session`, `PasswordResetToken`, `Material`, and `MaterialRequest` (+ enums `MaterialCategory`, `MaterialCondition`, `MaterialRequestStatus`). A material belongs to its owner (`ownerId`, deleted with the user), and requests link a requester to a material with an optional 500-character message. A partial unique index prevents more than one pending request per requester/material while preserving request history. Request statuses are `PENDING`, `ACCEPTED`, `REJECTED`, and `CANCELLED`. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Password reset tokens are SHA-256 hashed in the database, expire after 30 minutes, and are single-use.
 
 ### API
 
@@ -185,40 +185,40 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `POST /api/auth/reset-password` | no | Set a new password with the emailed token and invalidate sessions |
 | `POST /api/auth/logout` | no | End session |
 | `GET /api/auth/me` | yes | Current user (401 when logged out) |
-| `GET /api/materials` | yes | Available listings. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all`), `page`, `limit` (max 50) |
+| `GET /api/materials` | no (optional session) | Available listings. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all` for signed-in users), `page`, `limit` (max 50) |
 | `GET /api/materials/mine` | yes | Your listings (all statuses by default), same query options |
-| `GET /api/materials/:id` | yes | One listing |
+| `GET /api/materials/:id` | no (optional session) | Available listing details; unavailable details are restricted to signed-in users |
 | `POST /api/materials` | yes | Create (owner = logged-in user, never taken from the body) |
 | `PUT /api/materials/:id` | owner | Update |
 | `PATCH /api/materials/:id/availability` | owner | Body `{ "isAvailable": true|false }` |
 | `DELETE /api/materials/:id` | owner | Delete |
-| `POST /api/requests/materials/:materialId` | yes | Request an available material |
+| `POST /api/requests/materials/:materialId` | yes | Request an available material; optional `{ "message": "..." }` (max 500 characters) |
 | `GET /api/requests/mine` | yes | List your material requests and statuses |
 | `GET /api/requests/received` | yes | List requests for your materials |
 | `PATCH /api/requests/:id/status` | yes | Owner accepts/rejects, or requester cancels; body `{ "status": "ACCEPTED"|"REJECTED"|"CANCELLED" }` |
 
 Status codes: 400 validation, 401 not logged in, 403 unauthorized action, 404 not found, 409 conflict (for example duplicate request or unavailable material), 429 too many login attempts, 503 database unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Conditions: `NEW LIKE_NEW GOOD FAIR USED`. Images are **URLs only** (http/https); there is no file upload.
 
-Per your Part 2 brief, every materials endpoint requires login. To make browsing public later, move `router.use(requireAuth)` in `backend/src/routes/materials.routes.js` onto the write routes only.
+Public material responses include listing information and the owner's display name, but omit owner identifiers and never include private profile fields. Creating, editing, deleting, and managing personal listings still requires a verified session.
 
 ### Frontend routes
 
-`/` home, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/materials` (search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`, `/my-requests`, `/received-requests`. Pages other than home, login, register, and password reset pages redirect to login when logged out.
+`/` home, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/materials` (public search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`, `/my-requests`, `/received-requests`. Material search/details are public; material mutations and personal dashboards redirect to login when logged out. Signed-in users visiting Forgot Password are redirected to materials.
 
-### Password reset deployment
+### Database migrations and password reset deployment
 
-Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_URL` on the backend host. Review the additive password-reset and material-request migrations, then apply approved migrations with `npx prisma migrate deploy`. The material-request migration adds only the status enum, `material_requests` table, indexes, and foreign keys; it does not recreate or modify existing users, materials, sessions, or request data. For an existing database with tables but no Prisma migration history, first verify its schema matches `backend/prisma/migrations/0_init/migration.sql`; only then baseline that initial migration once with `npx prisma migrate resolve --applied 0_init`, followed by `npx prisma migrate deploy`. Do not run `migrate reset` on a database with user data. Do not apply migrations to production until they have been reviewed and approved.
+Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_URL` on the backend host. Review the additive migrations, then apply approved migrations with `npx prisma migrate deploy`. The material-request migration adds the status enum and `material_requests` table; the request-message migration adds a nullable `message` column (up to 500 characters). They do not recreate or remove existing records. For an existing database with tables but no Prisma migration history, first verify its schema matches `backend/prisma/migrations/0_init/migration.sql`; only then baseline that initial migration once with `npx prisma migrate resolve --applied 0_init`, followed by `npx prisma migrate deploy`. Do not run `migrate reset` on a database with user data. Do not apply migrations to production until they have been reviewed and approved.
 
 ### Automated API test
 
-With the backend running and the migrations applied to a **development/test database**:
+With the backend running and migrations applied to a **development/test database**:
 
 ```bash
 cd backend
 npm run test:api       # npm.cmd run test:api on restricted PowerShell
 ```
 
-It registers throw-away users and checks accounts, materials, request creation, duplicate and ownership restrictions, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
+It registers throw-away users and checks accounts, public browsing and filtering, materials, optional request messages, duplicate and ownership restrictions, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
 
 ## Troubleshooting
 

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { optionalAuth, requireAuth } from '../middleware/auth.js';
 import {
   create,
   getOne,
@@ -12,14 +12,12 @@ import {
 
 const router = Router();
 
-router.use(requireAuth); // every materials endpoint requires a verified session
-
-router.get('/', list);
-router.get('/mine', mine); // must be declared before '/:id'
-router.post('/', create);
-router.get('/:id', getOne);
-router.put('/:id', update);
-router.patch('/:id/availability', setAvailability);
-router.delete('/:id', remove);
+router.get('/', optionalAuth, list);
+router.get('/mine', requireAuth, mine); // must be declared before '/:id'
+router.post('/', requireAuth, create);
+router.get('/:id', optionalAuth, getOne);
+router.put('/:id', requireAuth, update);
+router.patch('/:id/availability', requireAuth, setAvailability);
+router.delete('/:id', requireAuth, remove);
 
 export default router;

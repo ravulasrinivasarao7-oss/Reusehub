@@ -10,3 +10,9 @@ export const requireAuth = asyncHandler(async (req, res, next) => {
   req.user = user;
   next();
 });
+
+export const optionalAuth = asyncHandler(async (req, res, next) => {
+  const user = await getUserBySessionToken(req.cookies?.[SESSION_COOKIE]);
+  if (user) req.user = user;
+  next();
+});

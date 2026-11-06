@@ -70,7 +70,17 @@ export const authApi = {
   requestPasswordReset: (payload) => request('/auth/forgot-password', { method: 'POST', body: payload }),
   resetPassword: (payload) => request('/auth/reset-password', { method: 'POST', body: payload }),
   logout: () => request('/auth/logout', { method: 'POST' }),
-  me: () => request('/auth/me'),
+  me: (() => {
+    let pending;
+    return () => {
+      if (!pending) {
+        pending = request('/auth/me').finally(() => {
+          pending = null;
+        });
+      }
+      return pending;
+    };
+  })(),
   profile: () => request('/auth/profile'),
   updateProfile: (payload) => request('/auth/profile', { method: 'PUT', body: payload }),
 };
@@ -89,7 +99,10 @@ export const materialsApi = {
 
 // --- Material requests ---
 export const requestsApi = {
-  create: (materialId) => request(`/requests/materials/${materialId}`, { method: 'POST' }),
+  create: (materialId, message) => request(`/requests/materials/${materialId}`, {
+    method: 'POST',
+    body: message === undefined ? {} : { message },
+  }),
   mine: () => request('/requests/mine'),
   received: () => request('/requests/received'),
   updateStatus: (id, status) =>

@@ -22,6 +22,7 @@ export default function MyRequestsPage() {
   }, []);
 
   async function cancelRequest(request) {
+    if (!window.confirm('Cancel this pending material request?')) return;
     setUpdatingId(request.id);
     setMessage('');
     setState((current) => ({ ...current, error: '' }));
