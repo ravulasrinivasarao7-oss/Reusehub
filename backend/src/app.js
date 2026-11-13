@@ -17,6 +17,15 @@ app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 app.use(originCheck);
 
+if (env.materialUploadDir) {
+  app.use('/uploads', express.static(env.materialUploadDir, {
+    dotfiles: 'deny',
+    index: false,
+    immutable: true,
+    maxAge: '1y',
+  }));
+}
+
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/materials', materialsRoutes);

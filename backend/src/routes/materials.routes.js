@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { uploadMaterialImage } from '../controllers/material-images.controller.js';
 import { optionalAuth, requireAuth } from '../middleware/auth.js';
+import { receiveMaterialImage } from '../middleware/material-image-upload.js';
 import {
   create,
   getOne,
@@ -14,6 +16,7 @@ const router = Router();
 
 router.get('/', optionalAuth, list);
 router.get('/mine', requireAuth, mine); // must be declared before '/:id'
+router.post('/images', requireAuth, receiveMaterialImage, uploadMaterialImage);
 router.post('/', requireAuth, create);
 router.get('/:id', optionalAuth, getOne);
 router.put('/:id', requireAuth, update);

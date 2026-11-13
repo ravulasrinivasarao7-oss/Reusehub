@@ -15,11 +15,32 @@ export default function MyRequestsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    requestsApi.mine()
-      .then((res) => !cancelled && setState({ loading: false, error: '', items: res.data }))
-      .catch((error) => !cancelled && setState({ loading: false, error: error.message, items: [] }));
-    return () => { cancelled = true; };
-  }, []);
+    let requestPending = false;
+    async function refreshRequests() {
+      if (cancelled || requestPending) return;
+      requestPending = true;
+      try {
+        const res = await requestsApi.mine();
+        if (!cancelled) {
+          res.data.forEach(updateRequest);
+          setState({ loading: false, error: '', items: res.data });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setState((current) => ({ ...current, loading: false, error: error.message }));
+        }
+      } finally {
+        requestPending = false;
+      }
+    }
+
+    refreshRequests();
+    window.addEventListener('focus', refreshRequests);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refreshRequests);
+    };
+  }, [updateRequest]);
 
   async function cancelRequest(request) {
     if (!window.confirm('Cancel this pending material request?')) return;

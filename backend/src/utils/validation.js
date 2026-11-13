@@ -11,6 +11,7 @@ const singleLine = (v) => (typeof v === 'string' ? stripControl(v).replace(/\s+/
 const multiLine = (v) => (typeof v === 'string' ? stripControl(v).replace(/\r\n?/g, '\n').trim() : '');
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_VALIDATION_MESSAGE = 'Password must contain at least 8 characters, an uppercase letter, a lowercase letter, and a special character.';
 
 export function validateRegister(body) {
   const src = body && typeof body === 'object' ? body : {};
@@ -36,7 +37,7 @@ export function validateRegister(body) {
     || !hasNumber
     || !hasSpecialCharacter
   ) {
-    errors.password = 'Password must be 8–72 characters, use at most 72 UTF-8 bytes, and include uppercase and lowercase letters, a number, and a special character.';
+    errors.password = PASSWORD_VALIDATION_MESSAGE;
   }
   return { data: { name, email, password }, errors };
 }
@@ -124,6 +125,9 @@ function parseImageUrl(raw) {
   const trimmed = stripControl(raw).trim();
   if (trimmed === '') return { value: null };
   if (trimmed.length > 500) return { error: 'Image URL must be at most 500 characters.' };
+  if (/^\/uploads\/[a-z0-9-]+\.(?:jpe?g|png|webp)$/i.test(trimmed)) {
+    return { value: trimmed };
+  }
   let url;
   try {
     url = new URL(trimmed);

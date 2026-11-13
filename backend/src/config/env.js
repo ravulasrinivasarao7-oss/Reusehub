@@ -1,6 +1,8 @@
 // Loads and validates environment variables. Import this file before anything
 // that reads process.env (e.g. the Prisma client).
 import dotenv from 'dotenv';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 dotenv.config();
 
@@ -12,6 +14,12 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+const isProduction = process.env.NODE_ENV === 'production';
+const backendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const configuredMaterialUploadDir = process.env.MATERIAL_UPLOAD_DIR?.trim();
+const materialUploadDir = configuredMaterialUploadDir
+  ? resolve(configuredMaterialUploadDir)
+  : isProduction ? null : resolve(backendRoot, 'uploads', 'material-images');
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -36,5 +44,6 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || '',
   nodeEnv: process.env.NODE_ENV || 'development',
-  isProduction: process.env.NODE_ENV === 'production',
+  isProduction,
+  materialUploadDir,
 };

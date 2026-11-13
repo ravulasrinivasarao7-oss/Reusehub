@@ -1,21 +1,90 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
 import { materialsApi } from '../services/api.js';
 
 const btn = 'rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50';
 
 // Edit / availability toggle / delete for the listing owner.
 export default function OwnerActions({ material, onUpdated, onDeleted, onError }) {
+  const { verifySession } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  function redirectToLogin() {
+    navigate('/login', {
+      replace: true,
+      state: { from: location, authMessage: 'Please log in to manage your listings.' },
+    });
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    setSessionReady(false);
+    verifySession()
+      .then((verifiedUser) => {
+        if (cancelled) return;
+        if (!verifiedUser) {
+          redirectToLogin();
+          return;
+        }
+        if (verifiedUser.id !== material.ownerId) {
+          onError('You can only manage your own listings.');
+          return;
+        }
+        setSessionReady(true);
+      })
+      .catch((error) => {
+        if (!cancelled) onError(error.message);
+      });
+    return () => { cancelled = true; };
+  }, [material.ownerId, navigate, location, onError, verifySession]);
+
+  async function requireOwnerSession() {
+    let verifiedUser;
+    try {
+      verifiedUser = await verifySession();
+    } catch (error) {
+      onError(error.message);
+      return false;
+    }
+    if (!verifiedUser) {
+      navigate('/login', {
+        replace: true,
+        state: { from: location, authMessage: 'Please log in to manage your listings.' },
+      });
+      return false;
+    }
+    if (verifiedUser.id !== material.ownerId) {
+      onError('You can only manage your own listings.');
+      return false;
+    }
+    return true;
+  }
+
+  function handleActionError(error) {
+    if (error.status === 401) {
+      setConfirming(false);
+      navigate('/login', {
+        replace: true,
+        state: { from: location, authMessage: 'Please log in to manage your listings.' },
+      });
+      return;
+    }
+    onError(error.message);
+  }
 
   async function toggleAvailability() {
     setBusy(true);
     try {
+      if (!await requireOwnerSession()) return;
       const res = await materialsApi.setAvailability(material.id, !material.isAvailable);
       onUpdated(res.data);
     } catch (error) {
-      onError(error.message);
+      handleActionError(error);
     } finally {
       setBusy(false);
     }
@@ -24,14 +93,30 @@ export default function OwnerActions({ material, onUpdated, onDeleted, onError }
   async function handleDelete() {
     setBusy(true);
     try {
+      if (!await requireOwnerSession()) {
+        setConfirming(false);
+        return;
+      }
       await materialsApi.remove(material.id);
       onDeleted(material);
     } catch (error) {
-      onError(error.message);
+      handleActionError(error);
+    } finally {
       setBusy(false);
       setConfirming(false);
     }
   }
+
+  async function showDeleteConfirmation() {
+    setBusy(true);
+    try {
+      if (await requireOwnerSession()) setConfirming(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!sessionReady) return null;
 
   return (
     <div className="flex flex-wrap gap-2">
@@ -51,7 +136,7 @@ export default function OwnerActions({ material, onUpdated, onDeleted, onError }
           </button>
         </>
       ) : (
-        <button type="button" disabled={busy} onClick={() => setConfirming(true)} className={`${btn} border-red-700 text-red-800 hover:bg-red-50`}>
+        <button type="button" disabled={busy} onClick={showDeleteConfirmation} className={`${btn} border-red-700 text-red-800 hover:bg-red-50`}>
           Delete<span className="sr-only">: {material.title}</span>
         </button>
       )}

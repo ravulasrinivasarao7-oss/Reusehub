@@ -46,13 +46,13 @@ useEffect(() => {
 
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       <a href="#main" className="skip-link rounded bg-green-700 px-3 py-2 text-white">
         Skip to main content
       </a>
       <Navbar />
       {authError && <div className="mx-auto max-w-6xl px-4 pt-4"><Alert type="error">{authError}</Alert></div>}
-      <main id="main">
+      <main id="main" className="flex-1">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -71,6 +71,6 @@ useEffect(() => {
         </Routes>
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

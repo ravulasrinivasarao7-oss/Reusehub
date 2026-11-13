@@ -73,7 +73,7 @@ export default function MyListingsPage() {
             ) : (
               <div className="mt-6 rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-700">
                 <p className="font-semibold text-slate-900">You haven’t listed any materials yet.</p>
-                <Link to="/materials/new" className="mt-4 inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">Create your first listing</Link>
+                <Link to="/materials/new" className="mt-4 inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">Add Material</Link>
               </div>
             )}
             <Pagination meta={state.meta} onChange={(p) => setParams({ page: String(p) })} />

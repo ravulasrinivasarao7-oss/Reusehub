@@ -4,6 +4,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.test.example
 *.log
 npm-debug.log*
 .DS_Store
@@ -15,3 +16,4 @@ coverage/
 backups/
 *.dump
 *.backup
+backend/uploads/

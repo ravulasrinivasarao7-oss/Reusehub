@@ -2,6 +2,15 @@
 // Requests send the session cookie (credentials: 'include').
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
 
+export function resolveMaterialImageUrl(src) {
+  if (!src) return '';
+  try {
+    return new URL(src, `${new URL(API_BASE_URL, window.location.origin).origin}/`).href;
+  } catch {
+    return src;
+  }
+}
+
 export class ApiError extends Error {
   constructor(message, { status = 0, errors = null } = {}) {
     super(message);
@@ -23,14 +32,15 @@ function buildQuery(query) {
 async function request(path, { method = 'GET', body, query, timeoutMs = 10000 } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}${buildQuery(query)}`, {
       method,
       credentials: 'include',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || isFormData ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
       signal: controller.signal,
     });
   } catch {
@@ -91,6 +101,11 @@ export const materialsApi = {
   mine: (query) => request('/materials/mine', { query }),
   get: (id) => request(`/materials/${id}`),
   create: (payload) => request('/materials', { method: 'POST', body: payload }),
+  uploadImage: (file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return request('/materials/images', { method: 'POST', body: formData });
+  },
   update: (id, payload) => request(`/materials/${id}`, { method: 'PUT', body: payload }),
   setAvailability: (id, isAvailable) =>
     request(`/materials/${id}/availability`, { method: 'PATCH', body: { isAvailable } }),

@@ -4,6 +4,8 @@ import Alert from '../components/Alert.jsx';
 import FormField from '../components/FormField.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
+const PASSWORD_VALIDATION_MESSAGE = 'Password must contain at least 8 characters, an uppercase letter, a lowercase letter, and a special character.';
+
 export default function RegisterPage() {
   const { user, register } = useAuth();
   const navigate = useNavigate();
@@ -15,16 +17,17 @@ export default function RegisterPage() {
   const passwordBytes = new TextEncoder().encode(values.password).length;
   const passwordLength = [...values.password].length;
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const passwordErrors = [
-    [passwordLength >= 8, 'Password must contain at least 8 characters.'],
-    [/[A-Z]/.test(values.password), 'Password must contain at least one uppercase letter.'],
-    [/[a-z]/.test(values.password), 'Password must contain at least one lowercase letter.'],
-    [/[0-9]/.test(values.password), 'Password must contain at least one number.'],
-    [/[^A-Za-z0-9\s]/.test(values.password), 'Password must contain at least one special character.'],
-    [passwordBytes <= 72, 'Password must not exceed 72 UTF-8 bytes.'],
-  ].filter(([valid]) => !valid).map(([, message]) => message);
-  const passwordError = passwordErrors.length
-    ? passwordErrors
+  const passwordInvalid = [
+    passwordLength >= 8,
+    /[A-Z]/.test(values.password),
+    /[a-z]/.test(values.password),
+    /[0-9]/.test(values.password),
+    /[^A-Za-z0-9\s]/.test(values.password),
+    passwordLength <= 72,
+    passwordBytes <= 72,
+  ].some((valid) => !valid);
+  const passwordError = passwordInvalid
+    ? PASSWORD_VALIDATION_MESSAGE
     : errors.password;
   const confirmPasswordError = values.confirmPassword
     ? (values.password !== values.confirmPassword ? 'Passwords do not match.' : undefined)
@@ -47,7 +50,7 @@ export default function RegisterPage() {
     const found = {};
     if (values.name.trim().length < 2) found.name = 'Name must be at least 2 characters.';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) found.email = 'Enter a valid email address.';
-    if (passwordErrors.length) found.password = passwordErrors;
+    if (passwordInvalid) found.password = PASSWORD_VALIDATION_MESSAGE;
     if (!values.confirmPassword) found.confirmPassword = 'Please confirm your password.';
     else if (values.password !== values.confirmPassword) found.confirmPassword = 'Passwords do not match.';
     setErrors(found);
@@ -56,7 +59,10 @@ export default function RegisterPage() {
     setSubmitting(true);
     try {
       await register({ name: values.name, email: values.email, password: values.password });
-      navigate('/materials', { replace: true });
+      navigate('/login', {
+        replace: true,
+        state: { message: 'Registration successful. Please log in to continue.' },
+      });
     } catch (error) {
       setFormError(error.message);
       setErrors(error.errors || {});

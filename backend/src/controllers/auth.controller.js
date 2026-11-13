@@ -56,7 +56,6 @@ export const register = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  setSessionCookie(res, await createSession(user.id));
   res.status(201).json({ success: true, data: { user } });
 });
 

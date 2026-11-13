@@ -121,7 +121,7 @@ export default function MaterialsPage() {
                   ) : (
                     <>
                       <p className="font-semibold text-slate-900">No materials have been listed yet.</p>
-                      <Link to="/materials/new" className="mt-4 inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">List the first material</Link>
+                      <Link to="/materials/new" className="mt-4 inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">Add Material</Link>
                     </>
                   )}
                 </div>

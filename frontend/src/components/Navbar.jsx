@@ -14,6 +14,7 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -38,13 +39,13 @@ export default function Navbar() {
     };
   }, [menuOpen]);
 
-  async function handleLogout() {
-    if (!window.confirm('Are you sure you want to log out?')) return;
+  async function confirmLogout() {
     setLogoutError('');
     setLoggingOut(true);
     try {
       await logout();
       setMenuOpen(false);
+      setLogoutConfirmOpen(false);
       navigate('/login', { replace: true });
     } catch (error) {
       setLogoutError(error.message);
@@ -54,6 +55,7 @@ export default function Navbar() {
   }
 
   return (
+    <>
     <header className="sticky top-0 z-40 border-b border-green-100 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
         <Link to="/" className="flex items-center gap-2 rounded text-xl font-bold text-green-800">
@@ -108,7 +110,7 @@ export default function Navbar() {
                     <div className="my-2 border-t border-slate-100" />
                     <button
                       type="button"
-                      onClick={handleLogout}
+                      onClick={() => { setLogoutError(''); setLogoutConfirmOpen(true); }}
                       disabled={loggingOut}
                       className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60"
                     >
@@ -128,5 +130,48 @@ export default function Navbar() {
         </div>
       </div>
     </header>
+    {logoutConfirmOpen && (
+      <div
+        className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !loggingOut) setLogoutConfirmOpen(false);
+        }}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-dialog-title"
+          aria-describedby="logout-dialog-description"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !loggingOut) setLogoutConfirmOpen(false);
+          }}
+          className="w-full max-w-sm rounded-xl border border-green-100 bg-white p-6 shadow-xl"
+        >
+          <h2 id="logout-dialog-title" className="text-xl font-bold text-slate-900">Log out?</h2>
+          <p id="logout-dialog-description" className="mt-2 text-sm text-slate-700">Are you sure you want to log out of ReUseHub?</p>
+          {logoutError && <p role="alert" className="mt-3 text-sm text-red-700">{logoutError}</p>}
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setLogoutConfirmOpen(false)}
+              disabled={loggingOut}
+              className="rounded-lg border border-slate-400 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmLogout}
+              disabled={loggingOut}
+              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+            >
+              {loggingOut ? 'Logging out…' : 'Logout'}
+            </button>
+          </div>
+        </section>
+      </div>
+    )}
+    </>
   );
 }

@@ -3,8 +3,9 @@ import app from './src/app.js';
 import { prisma } from './src/config/database.js';
 
 const PORT = process.env.PORT || env.port;
+const HOST = process.env.HOST || '0.0.0.0';
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`ReUseHub backend listening on port ${PORT}`);
 });
 

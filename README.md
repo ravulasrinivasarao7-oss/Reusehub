@@ -179,7 +179,7 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 
 | Method & path | Auth | Description |
 |---|---|---|
-| `POST /api/auth/register` | no | Create account and log in (201) |
+| `POST /api/auth/register` | no | Create account (201); log in separately |
 | `POST /api/auth/login` | no | Log in |
 | `POST /api/auth/forgot-password` | no | Email a one-time reset link if the account exists |
 | `POST /api/auth/reset-password` | no | Set a new password with the emailed token and invalidate sessions |
@@ -188,6 +188,7 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `GET /api/materials` | no (optional session) | Available listings. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all` for signed-in users), `page`, `limit` (max 50) |
 | `GET /api/materials/mine` | yes | Your listings (all statuses by default), same query options |
 | `GET /api/materials/:id` | no (optional session) | Available listing details; unavailable details are restricted to signed-in users |
+| `POST /api/materials/images` | yes | Upload a JPG, JPEG, PNG, or WebP image (max 5 MB); returns a stable image path |
 | `POST /api/materials` | yes | Create (owner = logged-in user, never taken from the body) |
 | `PUT /api/materials/:id` | owner | Update |
 | `PATCH /api/materials/:id/availability` | owner | Body `{ "isAvailable": true|false }` |
@@ -197,7 +198,7 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `GET /api/requests/received` | yes | List requests for your materials |
 | `PATCH /api/requests/:id/status` | yes | Owner accepts/rejects, or requester cancels; body `{ "status": "ACCEPTED"|"REJECTED"|"CANCELLED" }` |
 
-Status codes: 400 validation, 401 not logged in, 403 unauthorized action, 404 not found, 409 conflict (for example duplicate request or unavailable material), 429 too many login attempts, 503 database unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Conditions: `NEW LIKE_NEW GOOD FAIR USED`. Images are **URLs only** (http/https); there is no file upload.
+Status codes: 400 validation, 401 not logged in, 403 unauthorized action, 404 not found, 409 conflict (for example duplicate request or unavailable material), 429 too many login attempts, 503 database unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Conditions: `NEW LIKE_NEW GOOD FAIR USED`. Materials can use existing http/https image URLs or uploaded JPG, JPEG, PNG, and WebP files. Uploaded files are served from `/uploads` and require `MATERIAL_UPLOAD_DIR` to point to a persistent disk in production.
 
 Public material responses include listing information and the owner's display name, but omit owner identifiers and never include private profile fields. Creating, editing, deleting, and managing personal listings still requires a verified session.
 
@@ -209,6 +210,10 @@ Public material responses include listing information and the owner's display na
 
 Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_URL` on the backend host. Review the additive migrations, then apply approved migrations with `npx prisma migrate deploy`. The material-request migration adds the status enum and `material_requests` table; the request-message migration adds a nullable `message` column (up to 500 characters). They do not recreate or remove existing records. For an existing database with tables but no Prisma migration history, first verify its schema matches `backend/prisma/migrations/0_init/migration.sql`; only then baseline that initial migration once with `npx prisma migrate resolve --applied 0_init`, followed by `npx prisma migrate deploy`. Do not run `migrate reset` on a database with user data. Do not apply migrations to production until they have been reviewed and approved.
 
+### Render image storage deployment
+
+Render's application filesystem is ephemeral unless a persistent disk is mounted. Attach a disk to the backend service (for example, mounted at `/var/data`) and set `MATERIAL_UPLOAD_DIR=/var/data/material-images` in the service environment. Keep the disk attached across deploys; uploaded files are stored there and their `/uploads/<generated-name>` paths are saved in PostgreSQL. Do not set this path to a temporary directory. If no persistent path is configured in production, image upload requests return an explicit service-unavailable error. No database migration is needed for uploaded images.
+
 ### Automated API test
 
 With the backend running and migrations applied to a **development/test database**:
@@ -218,7 +223,7 @@ cd backend
 npm run test:api       # npm.cmd run test:api on restricted PowerShell
 ```
 
-It registers throw-away users and checks accounts, public browsing and filtering, materials, optional request messages, duplicate and ownership restrictions, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
+It registers throw-away users and checks account creation/login, public browsing and filtering, image upload and retrieval, materials, optional request messages, duplicate and ownership restrictions, requester-visible acceptance, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
 
 ## Troubleshooting
 

@@ -8,7 +8,7 @@ export default function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const redirectTo = location.state?.from?.pathname || '/materials';
+  const redirectTo = location.state?.from || '/';
 
   const [values, setValues] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -40,6 +40,8 @@ export default function LoginPage() {
   return (
     <section className="mx-auto max-w-md px-4 py-16">
       <h1 className="text-3xl font-bold text-slate-900">Log in</h1>
+      {location.state?.message && <div className="mt-4"><Alert type="success">{location.state.message}</Alert></div>}
+      {location.state?.authMessage && <div className="mt-4"><Alert>{location.state.authMessage}</Alert></div>}
       <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-5">
         <Alert type="error">{formError}</Alert>
         <FormField id="email" label="Email" type="email" autoComplete="email" required value={values.email} onChange={(e) => setValues({ ...values, email: e.target.value })} error={errors.email} />
