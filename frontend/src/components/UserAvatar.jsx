@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { resolveMaterialImageUrl } from '../services/api.js';
 
 export default function UserAvatar({ user, className = 'h-9 w-9' }) {
   const [imageFailed, setImageFailed] = useState(false);
@@ -13,7 +14,7 @@ export default function UserAvatar({ user, className = 'h-9 w-9' }) {
 
   return user?.avatarUrl && !imageFailed ? (
     <img
-      src={user.avatarUrl}
+      src={resolveMaterialImageUrl(user.avatarUrl)}
       alt=""
       onError={() => setImageFailed(true)}
       className={`${className} shrink-0 rounded-full border border-green-200 object-cover`}

@@ -18,6 +18,7 @@ let BASE = '';
 let prisma;
 let apiServer;
 let uploadedImageUrl = '';
+let uploadedProfileImageUrl = '';
 const PASSWORD = 'TestPassw0rd!'; // throw-away test-account password
 
 let passed = 0;
@@ -45,16 +46,17 @@ function getTestDatabaseUrl() {
     throw new Error('API_TEST_DATABASE_URL is not a valid PostgreSQL URL.');
   }
 
-  const databaseName = decodeURIComponent(url.pathname.slice(1));
   if (
     url.protocol !== 'postgresql:'
     || url.hostname !== '127.0.0.1'
-    || url.port !== '55432'
+    || url.port !== '5432'
     || url.username !== 'reusehub_test'
-    || url.password
-    || databaseName !== 'reusehub_api_test'
+    || !url.password
+    || url.pathname !== '/reusehub_api_test'
+    || url.search !== '?schema=public'
+    || url.hash
   ) {
-    throw new Error('API tests are restricted to reusehub_test@127.0.0.1:55432/reusehub_api_test with no password.');
+    throw new Error('API tests are restricted to reusehub_test@127.0.0.1:5432/reusehub_api_test with a configured password and exactly schema=public.');
   }
 
   return url.toString();
@@ -199,7 +201,7 @@ async function main() {
     BASE = `http://127.0.0.1:${port}/api`;
     apiServer = startApiServer(databaseUrl, port);
     await waitForApiServer(apiServer);
-    console.log('API test target: 127.0.0.1:55432/reusehub_api_test');
+    console.log('API test target: 127.0.0.1:5432/reusehub_api_test');
 
     const stamp = Date.now();
     const a = new Client();
@@ -258,6 +260,30 @@ async function main() {
 
   r = await a.call('GET', '/auth/me');
   check('GET /auth/me returns logged-in user A', r.status === 200 && r.json?.data?.user?.email === `test-a-${stamp}@example.com`);
+  r = await anon.call('PUT', '/auth/profile');
+  check('unauthenticated profile update is rejected (401)', r.status === 401);
+
+  const profileImageForm = new FormData();
+  profileImageForm.append('name', userA.name);
+  profileImageForm.append('email', userA.email);
+  profileImageForm.append('phone', '');
+  profileImageForm.append('location', '');
+  profileImageForm.append('image', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lfgAAAAASUVORK5CYII=', 'base64')], {
+    type: 'image/png',
+  }), 'avatar.png');
+  r = await a.call('PUT', '/auth/profile', profileImageForm);
+  uploadedProfileImageUrl = r.json?.data?.user?.avatarUrl || '';
+  check('authenticated profile update stores a profile image',
+    r.status === 200 && /^\/uploads\/[a-z0-9-]+\.png$/i.test(uploadedProfileImageUrl), JSON.stringify(r.json));
+  r = await a.call('GET', '/auth/profile');
+  check('profile image is persisted on the user account', r.status === 200 && r.json?.data?.user?.avatarUrl === uploadedProfileImageUrl);
+
+  const invalidProfileImageForm = new FormData();
+  invalidProfileImageForm.append('name', userA.name);
+  invalidProfileImageForm.append('email', userA.email);
+  invalidProfileImageForm.append('image', new Blob(['not an image'], { type: 'image/png' }), 'fake.png');
+  r = await a.call('PUT', '/auth/profile', invalidProfileImageForm);
+  check('profile image upload verifies the file signature (400)', r.status === 400);
 
   r = await b.call('POST', '/auth/register', { name: 'Test B', email: `test-b-${stamp}@example.com`, password: PASSWORD });
   check('register user B (201)', r.status === 201);
@@ -304,6 +330,14 @@ async function main() {
   check('material stores its uploaded image path', r.json?.data?.imageUrl === uploadedImageUrl);
   check('owner comes from session, not from request body', r.json?.data?.owner?.id === userA?.id && r.json?.data?.ownerId === userA?.id);
   const id = r.json?.data?.id;
+  r = await a.call('POST', '/materials', {
+    ...validMaterial,
+    title: 'Wood planks',
+    description: 'Clean boards with different sizes.',
+    category: 'WOOD',
+  });
+  check('create wood search regression material (201)', r.status === 201 && r.json?.data?.id);
+  const woodId = r.json?.data?.id;
   r = await anon.call('PUT', `/materials/${id}`, validMaterial);
   check('unauthenticated edit is rejected (401)', r.status === 401);
   r = await anon.call('PATCH', `/materials/${id}/availability`, { isAvailable: false });
@@ -313,6 +347,24 @@ async function main() {
   r = await publicClient.call('GET', `/materials?search=cardboard&category=CARDBOARD`);
   check('signed-out visitor can search and filter materials', r.status === 200 && r.json?.data?.some((m) => m.id === id));
   check('public listing omits owner identifiers', !('ownerId' in (r.json?.data?.find((m) => m.id === id) || {})) && !('id' in (r.json?.data?.find((m) => m.id === id)?.owner || {})));
+  r = await b.call('GET', '/materials?search=wood');
+  check('search finds a matching material title', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=wo');
+  check('search supports partial title matches', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=w');
+  check('single-letter search finds a matching title', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=WOOD');
+  check('search is case-insensitive', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=%20%20wood%20%20');
+  check('search trims leading and trailing spaces', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=z');
+  check('single-letter search does not match incidental description text', r.status === 200 && !r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=xyz123');
+  check('non-matching search returns an empty result', r.status === 200 && r.json?.data?.length === 0);
+  r = await b.call('GET', '/materials?search=wood&category=WOOD&availability=available');
+  check('search combines with category and availability filters', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?category=WOOD&availability=available');
+  check('empty search preserves the selected category and availability filters', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
   r = await publicClient.call('GET', `/materials/${id}`);
   check('signed-out visitor can view an available material', r.status === 200 && r.json?.data?.id === id && !('ownerId' in r.json.data));
   check('public material response includes its uploaded image path', r.json?.data?.imageUrl === uploadedImageUrl);
@@ -376,7 +428,7 @@ check(
   for (const term of ['<', '>', '&', '"']) {
     const query = new URLSearchParams({ search: term });
     r = await b.call('GET', `/materials?${query}`);
-    check(`search handles special character ${JSON.stringify(term)}`, r.status === 200);
+    check(`search handles special character ${JSON.stringify(term)}`, r.status === 200 && !r.json?.data?.some((m) => m.id === woodId));
   }
   r = await b.call('GET', '/materials?category=METAL');
   check('category filter excludes non-matching listing', r.status === 200 && !r.json?.data?.some((m) => m.id === id));
@@ -415,6 +467,12 @@ check(
   check('signed-out visitors cannot browse unavailable listings', r.status === 200 && !r.json?.data?.some((m) => m.id === id));
   r = await publicClient.call('GET', `/materials/${id}`);
   check('signed-out visitors cannot view unavailable listing details (404)', r.status === 404);
+  r = await a.call('PATCH', `/materials/${woodId}/availability`, { isAvailable: false });
+  check('wood search regression listing can be marked unavailable', r.status === 200);
+  r = await b.call('GET', '/materials?search=wood&category=WOOD&availability=available');
+  check('available filter excludes unavailable search matches', r.status === 200 && !r.json?.data?.some((m) => m.id === woodId));
+  r = await b.call('GET', '/materials?search=wood&category=WOOD&availability=unavailable');
+  check('unavailable filter includes matching search results', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
   r = await a.call('PATCH', `/materials/${id}/availability`, { isAvailable: 'yes' });
   check('non-boolean availability rejected (400)', r.status === 400);
 
@@ -450,6 +508,8 @@ check(
 
   r = await a.call('DELETE', `/materials/${id}`);
   check('owner can delete listing (200)', r.status === 200);
+  r = await a.call('DELETE', `/materials/${woodId}`);
+  check('owner can delete wood search regression listing (200)', r.status === 200);
   r = await a.call('GET', `/materials/${id}`);
   check('deleted listing returns 404', r.status === 404);
 
@@ -465,10 +525,12 @@ check(
     console.log(`\n${passed} passed, ${failed} failed`);
     return failed ? 1 : 0;
   } finally {
-    if (uploadedImageUrl) {
-      await unlink(join(testUploadDir, basename(uploadedImageUrl))).catch((error) => {
-        if (error.code !== 'ENOENT') throw error;
-      });
+    for (const imageUrl of [uploadedImageUrl, uploadedProfileImageUrl]) {
+      if (imageUrl) {
+        await unlink(join(testUploadDir, basename(imageUrl))).catch((error) => {
+          if (error.code !== 'ENOENT') throw error;
+        });
+      }
     }
     await stopApiServer(apiServer);
     if (prisma) await prisma.$disconnect();

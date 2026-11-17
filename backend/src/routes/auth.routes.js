@@ -10,6 +10,7 @@ import {
   updateProfile,
 } from '../controllers/auth.controller.js';
 import { requireAuth } from '../middleware/auth.js';
+import { receiveMaterialImage } from '../middleware/material-image-upload.js';
 import { rateLimit } from '../middleware/rateLimit.js';
 
 const router = Router();
@@ -36,6 +37,6 @@ router.post('/reset-password', passwordResetLimiter, resetPassword);
 router.post('/logout', logout);
 router.get('/me', requireAuth, me);
 router.get('/profile', requireAuth, getProfile);
-router.put('/profile', requireAuth, updateProfile);
+router.put('/profile', requireAuth, receiveMaterialImage, updateProfile);
 
 export default router;

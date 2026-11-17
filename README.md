@@ -185,7 +185,7 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `POST /api/auth/reset-password` | no | Set a new password with the emailed token and invalidate sessions |
 | `POST /api/auth/logout` | no | End session |
 | `GET /api/auth/me` | yes | Current user (401 when logged out) |
-| `GET /api/materials` | no (optional session) | Available listings. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all` for signed-in users), `page`, `limit` (max 50) |
+| `GET /api/materials` | no (optional session) | Available listings. `search` is a trimmed, case-insensitive partial match on material titles. Query: `search`, `category`, `condition`, `location`, `availability` (`available` default, `unavailable`, `all` for signed-in users), `page`, `limit` (max 50) |
 | `GET /api/materials/mine` | yes | Your listings (all statuses by default), same query options |
 | `GET /api/materials/:id` | no (optional session) | Available listing details; unavailable details are restricted to signed-in users |
 | `POST /api/materials/images` | yes | Upload a JPG, JPEG, PNG, or WebP image (max 5 MB); returns a stable image path |

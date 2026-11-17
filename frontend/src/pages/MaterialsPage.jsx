@@ -114,13 +114,13 @@ export default function MaterialsPage() {
                 <div className="mt-4 rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-700">
                   {hasFilters ? (
                     <>
-                      <p className="font-semibold text-slate-900">No materials match your search or filters.</p>
+                      <p className="font-semibold text-slate-900">No materials found.</p>
                       <p className="mt-1 text-sm">Try different keywords or clear the filters.</p>
                       <button type="button" onClick={clearFilters} className="mt-4 rounded-lg border border-green-700 px-4 py-2 text-sm font-semibold text-green-800 hover:bg-green-50">Clear filters</button>
                     </>
                   ) : (
                     <>
-                      <p className="font-semibold text-slate-900">No materials have been listed yet.</p>
+                      <p className="font-semibold text-slate-900">No materials found.</p>
                       <Link to="/materials/new" className="mt-4 inline-block rounded-lg bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800">Add Material</Link>
                     </>
                   )}
