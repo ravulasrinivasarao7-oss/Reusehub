@@ -21,6 +21,7 @@ import {
   destroySession,
   setSessionCookie,
 } from '../services/session.service.js';
+import { saveUploadedImage } from '../services/image-storage.service.js';
 
 const BCRYPT_ROUNDS = 12;
 const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000;
@@ -89,6 +90,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
   if (Object.keys(errors).length) {
     throw new AppError(400, 'Please correct the highlighted fields.', errors);
   }
+  if (req.file) data.avatarUrl = await saveUploadedImage(req.file);
 
   try {
     const user = await prisma.user.update({

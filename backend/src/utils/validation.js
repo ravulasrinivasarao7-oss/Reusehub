@@ -12,6 +12,7 @@ const multiLine = (v) => (typeof v === 'string' ? stripControl(v).replace(/\r\n?
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_VALIDATION_MESSAGE = 'Password must contain at least 8 characters, an uppercase letter, a lowercase letter, and a special character.';
+const UPLOADED_IMAGE_PATH = /^\/uploads\/[a-z0-9-]+\.(?:jpe?g|png|webp)$/i;
 
 export function validateRegister(body) {
   const src = body && typeof body === 'object' ? body : {};
@@ -62,6 +63,8 @@ export function validateProfileUpdate(body) {
   if (rawAvatarUrl) {
     if (rawAvatarUrl.length > 500) {
       errors.avatarUrl = 'Profile picture URL must be at most 500 characters.';
+    } else if (UPLOADED_IMAGE_PATH.test(rawAvatarUrl)) {
+      avatarUrl = rawAvatarUrl;
     } else {
       try {
         const url = new URL(rawAvatarUrl);
@@ -125,7 +128,7 @@ function parseImageUrl(raw) {
   const trimmed = stripControl(raw).trim();
   if (trimmed === '') return { value: null };
   if (trimmed.length > 500) return { error: 'Image URL must be at most 500 characters.' };
-  if (/^\/uploads\/[a-z0-9-]+\.(?:jpe?g|png|webp)$/i.test(trimmed)) {
+  if (UPLOADED_IMAGE_PATH.test(trimmed)) {
     return { value: trimmed };
   }
   let url;

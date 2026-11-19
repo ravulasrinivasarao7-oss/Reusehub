@@ -11,10 +11,7 @@ function buildWhere(filters, baseWhere = {}) {
   if (filters.condition) where.condition = filters.condition;
   if (filters.location) where.location = { contains: filters.location, mode: 'insensitive' };
   if (filters.search) {
-    where.OR = [
-      { title: { contains: filters.search, mode: 'insensitive' } },
-      { description: { contains: filters.search, mode: 'insensitive' } },
-    ];
+    where.title = { contains: filters.search, mode: 'insensitive' };
   }
   return where;
 }

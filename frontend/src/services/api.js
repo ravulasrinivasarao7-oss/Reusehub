@@ -23,7 +23,8 @@ export class ApiError extends Error {
 function buildQuery(query) {
   const params = new URLSearchParams();
   Object.entries(query || {}).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') params.set(key, value);
+    const normalized = key === 'search' && typeof value === 'string' ? value.trim() : value;
+    if (normalized !== undefined && normalized !== null && normalized !== '') params.set(key, normalized);
   });
   const text = params.toString();
   return text ? `?${text}` : '';
