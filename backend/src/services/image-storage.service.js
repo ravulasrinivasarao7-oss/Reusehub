@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { env } from '../config/env.js';
+import { v2 as cloudinary } from 'cloudinary';
 import { AppError } from '../utils/AppError.js';
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const formatByExtension = new Map([
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
@@ -25,12 +24,16 @@ function hasExpectedSignature(buffer, mimeType) {
 }
 
 export async function saveUploadedImage(file) {
-  if (!env.materialUploadDir) {
-    throw new AppError(503, 'Image uploads are not configured. Set MATERIAL_UPLOAD_DIR to a persistent disk path.');
-  }
   if (!file) throw new AppError(400, 'Choose an image to upload.');
 
-  const extension = extname(file.originalname).toLowerCase();
+  if (!process.env.CLOUDINARY_URL?.trim()) {
+    throw new AppError(503, 'Image uploads are not configured. Set CLOUDINARY_URL.');
+  }
+
+  const extension = file.originalname?.match(/\.[^.]+$/)?.[0]?.toLowerCase() || '';
+  if (file.buffer.length > MAX_IMAGE_SIZE) {
+    throw new AppError(413, 'Image must be 5 MB or smaller.');
+  }
   if (
     formatByExtension.get(extension) !== file.mimetype
     || !hasExpectedSignature(file.buffer, file.mimetype)
@@ -38,8 +41,24 @@ export async function saveUploadedImage(file) {
     throw new AppError(400, 'The uploaded file is not a valid JPG, JPEG, PNG, or WebP image.');
   }
 
-  await mkdir(env.materialUploadDir, { recursive: true });
-  const filename = `${randomUUID()}${extension}`;
-  await writeFile(join(env.materialUploadDir, filename), file.buffer, { flag: 'wx' });
-  return `/uploads/${filename}`;
+  const result = await new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream({
+      resource_type: 'image',
+      folder: 'reusehub',
+      public_id: randomUUID(),
+      overwrite: false,
+    }, (error, uploadResult) => {
+      if (error) {
+        reject(error);
+      } else if (!uploadResult?.secure_url) {
+        reject(new Error('Cloudinary did not return a secure image URL.'));
+      } else {
+        resolve(uploadResult);
+      }
+    });
+
+    uploadStream.end(file.buffer);
+  });
+
+  return result.secure_url;
 }
