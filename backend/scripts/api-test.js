@@ -4,21 +4,22 @@
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
-import { unlink } from 'node:fs/promises';
-import { basename, join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const backendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const testUploadDir = join(backendRoot, 'uploads', 'api-test');
 dotenv.config({ path: join(backendRoot, '.env.test') });
 
 let BASE = '';
 let prisma;
 let apiServer;
+let mockCloudinaryServer;
 let uploadedImageUrl = '';
 let uploadedProfileImageUrl = '';
+let mockCloudinaryUploadCount = 0;
 const PASSWORD = 'TestPassw0rd!'; // throw-away test-account password
 
 let passed = 0;
@@ -62,11 +63,15 @@ function getTestDatabaseUrl() {
   return url.toString();
 }
 
-function getTestProcessEnv(databaseUrl, port) {
+function getTestProcessEnv(databaseUrl, port, cloudinaryPort) {
   const childEnv = {};
   for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP']) {
     if (process.env[key]) childEnv[key] = process.env[key];
   }
+
+  const cloudinaryUrl = cloudinaryPort
+    ? `cloudinary://test:test@mock-cloud?upload_prefix=${encodeURIComponent(`http://127.0.0.1:${cloudinaryPort}`)}`
+    : undefined;
 
   return {
     ...childEnv,
@@ -75,7 +80,7 @@ function getTestProcessEnv(databaseUrl, port) {
     PORT: String(port),
     HOST: '127.0.0.1',
     FRONTEND_URL: 'http://127.0.0.1',
-    MATERIAL_UPLOAD_DIR: testUploadDir,
+    ...(cloudinaryUrl && { CLOUDINARY_URL: cloudinaryUrl }),
     PRISMA_HIDE_UPDATE_MESSAGE: '1',
   };
 }
@@ -111,10 +116,48 @@ function migrateTestDatabase(databaseUrl) {
   }
 }
 
-function startApiServer(databaseUrl, port) {
+async function startMockCloudinaryServer(port) {
+  const server = createHttpServer((req, res) => {
+    if (req.method !== 'POST' || !req.url?.endsWith('/image/upload')) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+
+    req.resume();
+    req.on('end', () => {
+      mockCloudinaryUploadCount += 1;
+      const publicId = `reusehub-test-${mockCloudinaryUploadCount}`;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        public_id: publicId,
+        version: 1,
+        format: 'png',
+        resource_type: 'image',
+        type: 'upload',
+        secure_url: `https://res.cloudinary.com/mock-cloud/image/upload/v1/${publicId}.png`,
+      }));
+    });
+  });
+
+  await new Promise((resolveListen, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', resolveListen);
+  });
+  return server;
+}
+
+async function stopMockCloudinaryServer(server) {
+  if (!server?.listening) return;
+  await new Promise((resolveClose, reject) => {
+    server.close((error) => error ? reject(error) : resolveClose());
+  });
+}
+
+function startApiServer(databaseUrl, port, cloudinaryPort) {
   const server = spawn(process.execPath, [join(backendRoot, 'server.js')], {
     cwd: backendRoot,
-    env: getTestProcessEnv(databaseUrl, port),
+    env: getTestProcessEnv(databaseUrl, port, cloudinaryPort),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.on('data', (data) => process.stdout.write(`[api-server] ${data}`));
@@ -193,13 +236,14 @@ async function main() {
     const databaseUrl = getTestDatabaseUrl();
     process.env.DATABASE_URL = databaseUrl;
     process.env.NODE_ENV = 'test';
-    process.env.MATERIAL_UPLOAD_DIR = testUploadDir;
     ({ prisma } = await import('../src/config/database.js'));
 
     migrateTestDatabase(databaseUrl);
+    const cloudinaryPort = await getAvailableLocalPort();
+    mockCloudinaryServer = await startMockCloudinaryServer(cloudinaryPort);
     const port = await getAvailableLocalPort();
     BASE = `http://127.0.0.1:${port}/api`;
-    apiServer = startApiServer(databaseUrl, port);
+    apiServer = startApiServer(databaseUrl, port, cloudinaryPort);
     await waitForApiServer(apiServer);
     console.log('API test target: 127.0.0.1:5432/reusehub_api_test');
 
@@ -274,9 +318,19 @@ async function main() {
   r = await a.call('PUT', '/auth/profile', profileImageForm);
   uploadedProfileImageUrl = r.json?.data?.user?.avatarUrl || '';
   check('authenticated profile update stores a profile image',
-    r.status === 200 && /^\/uploads\/[a-z0-9-]+\.png$/i.test(uploadedProfileImageUrl), JSON.stringify(r.json));
+    r.status === 200
+      && uploadedProfileImageUrl === 'https://res.cloudinary.com/mock-cloud/image/upload/v1/reusehub-test-1.png',
+    JSON.stringify(r.json));
   r = await a.call('GET', '/auth/profile');
   check('profile image is persisted on the user account', r.status === 200 && r.json?.data?.user?.avatarUrl === uploadedProfileImageUrl);
+  const cloudinaryAvatarUrl = 'https://res.cloudinary.com/mock-cloud/image/upload/v1/profile-url.png';
+  r = await a.call('PUT', '/auth/profile', {
+    name: userA.name,
+    email: userA.email,
+    avatarUrl: cloudinaryAvatarUrl,
+  });
+  check('profile validation accepts a Cloudinary HTTPS URL',
+    r.status === 200 && r.json?.data?.user?.avatarUrl === cloudinaryAvatarUrl);
 
   const invalidProfileImageForm = new FormData();
   invalidProfileImageForm.append('name', userA.name);
@@ -309,13 +363,10 @@ async function main() {
   }), 'pixel.png');
   r = await a.call('POST', '/materials/images', imageForm);
   uploadedImageUrl = r.json?.data?.imageUrl || '';
-  check('authenticated user can upload a PNG to persistent storage (201)',
-    r.status === 201 && /^\/uploads\/[a-z0-9-]+\.png$/i.test(uploadedImageUrl), JSON.stringify(r.json));
-  if (uploadedImageUrl) {
-    const imageResponse = await fetch(new URL(uploadedImageUrl, BASE));
-    check('uploaded image is publicly retrievable from its returned URL',
-      imageResponse.status === 200 && imageResponse.headers.get('content-type')?.startsWith('image/png'));
-  }
+  check('authenticated user can upload a PNG to Cloudinary (201)',
+    r.status === 201
+      && uploadedImageUrl === 'https://res.cloudinary.com/mock-cloud/image/upload/v1/reusehub-test-2.png',
+    JSON.stringify(r.json));
   const invalidImageForm = new FormData();
   invalidImageForm.append('image', new Blob(['not an image'], { type: 'image/png' }), 'fake.png');
   r = await a.call('POST', '/materials/images', invalidImageForm);
@@ -324,10 +375,11 @@ async function main() {
   oversizedImageForm.append('image', new Blob([Buffer.alloc(5 * 1024 * 1024 + 1)], { type: 'image/png' }), 'large.png');
   r = await a.call('POST', '/materials/images', oversizedImageForm);
   check('image upload rejects files larger than 5 MB (413)', r.status === 413);
+  check('API uploads were sent only to the local Cloudinary mock', mockCloudinaryUploadCount === 2);
 
   r = await a.call('POST', '/materials', { ...validMaterial, imageUrl: uploadedImageUrl, ownerId: userB?.id });
   check('create material (201)', r.status === 201 && r.json?.data?.id, JSON.stringify(r.json));
-  check('material stores its uploaded image path', r.json?.data?.imageUrl === uploadedImageUrl);
+  check('material stores its uploaded Cloudinary HTTPS URL', r.json?.data?.imageUrl === uploadedImageUrl);
   check('owner comes from session, not from request body', r.json?.data?.owner?.id === userA?.id && r.json?.data?.ownerId === userA?.id);
   const id = r.json?.data?.id;
   r = await a.call('POST', '/materials', {
@@ -367,7 +419,7 @@ async function main() {
   check('empty search preserves the selected category and availability filters', r.status === 200 && r.json?.data?.some((m) => m.id === woodId));
   r = await publicClient.call('GET', `/materials/${id}`);
   check('signed-out visitor can view an available material', r.status === 200 && r.json?.data?.id === id && !('ownerId' in r.json.data));
-  check('public material response includes its uploaded image path', r.json?.data?.imageUrl === uploadedImageUrl);
+  check('public material response includes its Cloudinary HTTPS URL', r.json?.data?.imageUrl === uploadedImageUrl);
   // Test multiple material filters BEFORE accepting the request
   r = await b.call(
     'GET',
@@ -525,14 +577,8 @@ check(
     console.log(`\n${passed} passed, ${failed} failed`);
     return failed ? 1 : 0;
   } finally {
-    for (const imageUrl of [uploadedImageUrl, uploadedProfileImageUrl]) {
-      if (imageUrl) {
-        await unlink(join(testUploadDir, basename(imageUrl))).catch((error) => {
-          if (error.code !== 'ENOENT') throw error;
-        });
-      }
-    }
     await stopApiServer(apiServer);
+    await stopMockCloudinaryServer(mockCloudinaryServer);
     if (prisma) await prisma.$disconnect();
   }
 }

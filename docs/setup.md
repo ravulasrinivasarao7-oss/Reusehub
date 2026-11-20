@@ -8,7 +8,7 @@ cd backend  && npm install && cd ..
 cd frontend && npm install && cd ..
 
 # 2. Environment files
-cp backend/.env.example  backend/.env     # then edit DATABASE_URL and email settings
+cp backend/.env.example  backend/.env     # then edit DATABASE_URL, Cloudinary, and email settings
 cp frontend/.env.example frontend/.env
 
 # 3. Database
@@ -75,13 +75,13 @@ Copy-Item backend\.env.test.example backend\.env.test
 
 This cluster is independent of the installed PostgreSQL service and must remain bound to `127.0.0.1`; do not expose it on a network interface. `backend/.env.test` is ignored by Git. Run `npm run test:api` from `backend/`; it creates test records only in this isolated database. Stop the cluster when not needed with `pg_ctl -D $dataDir stop`. Do not point `API_TEST_DATABASE_URL` at production or another database; the runner rejects any URL outside the exact local endpoint above.
 
-## Render persistent image uploads
+## Persistent image uploads
 
-Material image uploads are written to `MATERIAL_UPLOAD_DIR`. Render's normal service filesystem is ephemeral, so create and attach a persistent disk to the backend web service (for example, mount it at `/var/data`) and configure `MATERIAL_UPLOAD_DIR=/var/data/material-images`. The server creates the image subdirectory as needed. Keep this disk attached when deploying; material records store `/uploads/<generated-name>` paths, and the backend serves those files from the same disk. Production uploads are unavailable until the persistent path is configured. Existing external image URLs continue to work. This feature does not require a database migration.
+Configure `CLOUDINARY_URL` in `backend/.env` from the Cloudinary dashboard. Both profile-picture and material uploads are sent to Cloudinary using the backend SDK, and the API saves Cloudinary's secure HTTPS URL. Uploads accept JPG/JPEG, PNG, and WebP files up to 5 MB and check file signatures. No database migration is needed. `MATERIAL_UPLOAD_DIR` is optional and only serves legacy images previously stored under `/uploads`.
 
 ## Deploying on Render
 
-- **Backend Web Service:** use `backend` as the root directory, `npm install && npx prisma generate` as the build command, and `npm start` as the start command. Set `DATABASE_URL`, `NODE_ENV=production`, `FRONTEND_URL` to the deployed frontend origin, and `MATERIAL_UPLOAD_DIR=/var/data/material-images`; attach a persistent disk mounted at `/var/data`.
+- **Backend Web Service:** use `backend` as the root directory, `npm install && npx prisma generate` as the build command, and `npm start` as the start command. Set `DATABASE_URL`, `CLOUDINARY_URL`, `NODE_ENV=production`, and `FRONTEND_URL` to the deployed frontend origin. Set `MATERIAL_UPLOAD_DIR` and attach a persistent disk only if legacy `/uploads` images need to remain available.
 - **Frontend Static Site:** use `frontend` as the root directory, `npm install && npm run build` as the build command, and `dist` as the publish directory. Set `VITE_API_BASE_URL` to the backend's public URL ending in `/api`.
 - Redeploy both services after setting environment variables. No database migration is needed for these fixes; keep the existing Render PostgreSQL database and migration history intact.
 

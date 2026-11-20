@@ -3,11 +3,12 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/+$/, '');
 
 export function resolveMaterialImageUrl(src) {
-  if (!src) return '';
+  if (typeof src !== 'string' || !src.trim()) return '';
   try {
-    return new URL(src, `${new URL(API_BASE_URL, window.location.origin).origin}/`).href;
+    const url = new URL(src, `${new URL(API_BASE_URL, window.location.origin).origin}/`);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
   } catch {
-    return src;
+    return '';
   }
 }
 

@@ -35,7 +35,13 @@ function validate(v) {
     if (!UPLOADED_IMAGE_PATH.test(v.imageUrl.trim())) {
       try {
         const url = new URL(v.imageUrl.trim());
-        if (!['http:', 'https:'].includes(url.protocol)) errors.imageUrl = 'Image URL must start with http:// or https://.';
+        if (
+          !['http:', 'https:'].includes(url.protocol)
+          || url.username
+          || url.password
+        ) {
+          errors.imageUrl = 'Image URL must start with http:// or https:// and must not contain credentials.';
+        }
       } catch {
         errors.imageUrl = 'Enter a valid image URL starting with http:// or https://.';
       }
