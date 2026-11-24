@@ -41,24 +41,42 @@ export async function saveUploadedImage(file) {
     throw new AppError(400, 'The uploaded file is not a valid JPG, JPEG, PNG, or WebP image.');
   }
 
-  const result = await new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream({
-      resource_type: 'image',
-      folder: 'reusehub',
-      public_id: randomUUID(),
-      overwrite: false,
-    }, (error, uploadResult) => {
-      if (error) {
-        reject(error);
-      } else if (!uploadResult?.secure_url) {
-        reject(new Error('Cloudinary did not return a secure image URL.'));
-      } else {
-        resolve(uploadResult);
-      }
-    });
+  let result;
+  try {
+    result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream({
+        resource_type: 'image',
+        folder: 'reusehub',
+        public_id: randomUUID(),
+        overwrite: false,
+      }, (error, uploadResult) => {
+        if (error) {
+          reject(error);
+        } else if (!uploadResult?.secure_url) {
+          reject(new Error('Cloudinary did not return a secure image URL.'));
+        } else {
+          resolve(uploadResult);
+        }
+      });
 
-    uploadStream.end(file.buffer);
-  });
+      uploadStream.end(file.buffer);
+    });
+  } catch (error) {
+    const errorName = typeof error?.name === 'string' && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(error.name)
+      ? error.name
+      : 'Error';
+    const errorCode = typeof error?.code === 'string' && /^[A-Za-z0-9_.-]{1,40}$/.test(error.code)
+      ? error.code
+      : undefined;
+    const httpStatus = [error?.http_code, error?.statusCode]
+      .find((value) => Number.isInteger(value) && value >= 100 && value <= 599);
+    console.error('Cloudinary image upload failed:', {
+      errorName,
+      ...(errorCode && { errorCode }),
+      ...(httpStatus && { httpStatus }),
+    });
+    throw new AppError(502, 'Image storage is temporarily unavailable. Please try again.');
+  }
 
   return result.secure_url;
 }
