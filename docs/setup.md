@@ -77,11 +77,11 @@ This cluster is independent of the installed PostgreSQL service and must remain 
 
 ## Persistent image uploads
 
-Configure `CLOUDINARY_URL` in `backend/.env` from the Cloudinary dashboard. Both profile-picture and material uploads are sent to Cloudinary using the backend SDK, and the API saves Cloudinary's secure HTTPS URL. Uploads accept JPG/JPEG, PNG, and WebP files up to 5 MB and check file signatures. No database migration is needed. `MATERIAL_UPLOAD_DIR` is optional and only serves legacy images previously stored under `/uploads`.
+Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `backend/.env` from the Cloudinary dashboard. `CLOUDINARY_URL` remains supported as an alternative. Both profile-picture and material uploads are sent to Cloudinary using the backend SDK, and the API saves Cloudinary's secure HTTPS URL. Uploads accept JPG/JPEG, PNG, and WebP files up to 5 MB and check file signatures. No database migration is needed. `MATERIAL_UPLOAD_DIR` is optional and only serves legacy images previously stored under `/uploads`.
 
 ## Deploying on Render
 
-- **Backend Web Service:** use `backend` as the root directory, `npm install && npx prisma generate` as the build command, and `npm start` as the start command. Set `DATABASE_URL`, `CLOUDINARY_URL`, `NODE_ENV=production`, and `FRONTEND_URL` to the deployed frontend origin. Set `MATERIAL_UPLOAD_DIR` and attach a persistent disk only if legacy `/uploads` images need to remain available.
+- **Backend Web Service:** use `backend` as the root directory, `npm install && npx prisma generate` as the build command, and `npm start` as the start command. Set `DATABASE_URL`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `NODE_ENV=production`, and `FRONTEND_URL` to the deployed frontend origin. `CLOUDINARY_URL` is supported instead of the three individual Cloudinary variables. Set `MATERIAL_UPLOAD_DIR` and attach a persistent disk only if legacy `/uploads` images need to remain available.
 - **Frontend Static Site:** use `frontend` as the root directory, `npm install && npm run build` as the build command, and `dist` as the publish directory. Set `VITE_API_BASE_URL` to the backend's public URL ending in `/api`.
 - Redeploy both services after setting environment variables. No database migration is needed for these fixes; keep the existing Render PostgreSQL database and migration history intact.
 
