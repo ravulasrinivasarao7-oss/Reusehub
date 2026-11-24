@@ -8,7 +8,7 @@ import { createServer as createHttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const backendRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 dotenv.config({ path: join(backendRoot, '.env.test') });
@@ -16,11 +16,14 @@ dotenv.config({ path: join(backendRoot, '.env.test') });
 let BASE = '';
 let prisma;
 let apiServer;
+const auxiliaryApiServers = [];
 let mockCloudinaryServer;
 let uploadedImageUrl = '';
 let uploadedProfileImageUrl = '';
 let mockCloudinaryUploadCount = 0;
 let failNextCloudinaryUpload = false;
+let failNextCloudinaryTransport = false;
+let apiServerLogOutput = '';
 const PASSWORD = 'TestPassw0rd!'; // throw-away test-account password
 
 let passed = 0;
@@ -64,15 +67,25 @@ function getTestDatabaseUrl() {
   return url.toString();
 }
 
-function getTestProcessEnv(databaseUrl, port, cloudinaryPort) {
+function getTestProcessEnv(databaseUrl, port, cloudinaryPort, cloudinaryMode = 'url') {
   const childEnv = {};
   for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP']) {
     if (process.env[key]) childEnv[key] = process.env[key];
   }
 
-  const cloudinaryUrl = cloudinaryPort
-    ? `cloudinary://test:test@mock-cloud?upload_prefix=${encodeURIComponent(`http://127.0.0.1:${cloudinaryPort}`)}`
-    : undefined;
+  const cloudinaryEnv = {};
+  if (cloudinaryPort) {
+    cloudinaryEnv.CLOUDINARY_TEST_MOCK_PORT = String(cloudinaryPort);
+    if (cloudinaryMode === 'url') {
+      cloudinaryEnv.CLOUDINARY_URL = 'cloudinary://test:test@mock-cloud';
+    } else {
+      cloudinaryEnv.CLOUDINARY_CLOUD_NAME = 'mock-cloud';
+      cloudinaryEnv.CLOUDINARY_API_KEY = 'mock-api-key';
+      if (cloudinaryMode === 'individual') {
+        cloudinaryEnv.CLOUDINARY_API_SECRET = 'mock-api-secret';
+      }
+    }
+  }
 
   return {
     ...childEnv,
@@ -81,7 +94,7 @@ function getTestProcessEnv(databaseUrl, port, cloudinaryPort) {
     PORT: String(port),
     HOST: '127.0.0.1',
     FRONTEND_URL: 'http://127.0.0.1',
-    ...(cloudinaryUrl && { CLOUDINARY_URL: cloudinaryUrl }),
+    ...cloudinaryEnv,
     PRISMA_HIDE_UPDATE_MESSAGE: '1',
   };
 }
@@ -126,12 +139,19 @@ async function startMockCloudinaryServer(port) {
     }
 
     const shouldFail = failNextCloudinaryUpload;
+    const shouldDropConnection = failNextCloudinaryTransport;
     failNextCloudinaryUpload = false;
+    failNextCloudinaryTransport = false;
     req.resume();
     req.on('end', () => {
+      if (shouldDropConnection) {
+        req.socket.destroy();
+        return;
+      }
+
       if (shouldFail) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: { message: 'Invalid Cloudinary credentials.' } }));
+        res.end(JSON.stringify({ error: { message: 'Simulated Cloudinary rejection.' } }));
         return;
       }
 
@@ -163,19 +183,43 @@ async function stopMockCloudinaryServer(server) {
   });
 }
 
-function startApiServer(databaseUrl, port, cloudinaryPort) {
-  const server = spawn(process.execPath, [join(backendRoot, 'server.js')], {
+function startApiServer(databaseUrl, port, cloudinaryPort, cloudinaryMode = 'url') {
+  apiServerLogOutput = '';
+  const startupScript = [
+    "const https = require('node:https');",
+    "const http = require('node:http');",
+    "const originalHttpsRequest = https.request;",
+    "https.request = function(options, ...args) {",
+    "  if (options?.hostname === 'api.cloudinary.com' && process.env.CLOUDINARY_TEST_MOCK_PORT) {",
+    "    const forwardedOptions = { ...options, protocol: 'http:', hostname: '127.0.0.1', port: process.env.CLOUDINARY_TEST_MOCK_PORT };",
+    "    delete forwardedOptions.agent;",
+    "    return http.request(forwardedOptions, ...args);",
+    '  }',
+    "  return originalHttpsRequest.call(https, options, ...args);",
+    '};',
+    `import(${JSON.stringify(pathToFileURL(join(backendRoot, 'server.js')).href)}).catch((error) => {`,
+    "  console.error(error);",
+    '  process.exit(1);',
+    '});',
+  ].join('\n');
+  const server = spawn(process.execPath, ['--input-type=commonjs', '-e', startupScript], {
     cwd: backendRoot,
-    env: getTestProcessEnv(databaseUrl, port, cloudinaryPort),
+    env: getTestProcessEnv(databaseUrl, port, cloudinaryPort, cloudinaryMode),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  server.stdout.on('data', (data) => process.stdout.write(`[api-server] ${data}`));
-  server.stderr.on('data', (data) => process.stderr.write(`[api-server] ${data}`));
+  server.stdout.on('data', (data) => {
+    apiServerLogOutput += data.toString();
+    process.stdout.write(`[api-server] ${data}`);
+  });
+  server.stderr.on('data', (data) => {
+    apiServerLogOutput += data.toString();
+    process.stderr.write(`[api-server] ${data}`);
+  });
   return server;
 }
 
-async function waitForApiServer(server) {
-  const healthUrl = `${BASE}/health`;
+async function waitForApiServer(server, base = BASE) {
+  const healthUrl = `${base}/health`;
   let lastError = 'no health response';
   for (let attempt = 0; attempt < 40; attempt += 1) {
     if (server.exitCode !== null) {
@@ -207,9 +251,13 @@ async function stopApiServer(server) {
 
 class Client {
   cookie = '';
+  constructor(base = BASE) {
+    this.base = base;
+  }
+
   async call(method, path, body) {
     const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
-    const res = await fetch(BASE + path, {
+    const res = await fetch(this.base + path, {
       method,
       headers: {
         ...(!isFormData && body !== undefined && { 'Content-Type': 'application/json' }),
@@ -226,6 +274,55 @@ class Client {
     let json = null;
     try { json = await res.json(); } catch { /* non-JSON body */ }
     return { status: res.status, json, setCookies };
+  }
+}
+
+async function testIndividualCloudinaryConfiguration(databaseUrl, cloudinaryPort, mode, stamp) {
+  const port = await getAvailableLocalPort();
+  const base = `http://127.0.0.1:${port}/api`;
+  const testEnv = getTestProcessEnv(databaseUrl, port, cloudinaryPort, mode);
+  const server = startApiServer(databaseUrl, port, cloudinaryPort, mode);
+  auxiliaryApiServers.push(server);
+
+  try {
+    check(`${mode} Cloudinary test has no CLOUDINARY_URL`,
+      !Object.prototype.hasOwnProperty.call(testEnv, 'CLOUDINARY_URL'));
+    await waitForApiServer(server, base);
+    const client = new Client(base);
+    const email = `${mode}-${stamp}@example.com`;
+    let response = await client.call('POST', '/auth/register', {
+      name: 'Cloudinary Config Test',
+      email,
+      password: PASSWORD,
+    });
+    check(`${mode} Cloudinary test user registers`, response.status === 201);
+    response = await client.call('POST', '/auth/login', { email, password: PASSWORD });
+    check(`${mode} Cloudinary test user authenticates`, response.status === 200);
+
+    const form = new FormData();
+    form.append('name', 'Cloudinary Config Test');
+    form.append('email', email);
+    form.append('image', new Blob([Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lfgAAAAASUVORK5CYII=',
+      'base64',
+    )], { type: 'image/png' }), 'avatar.png');
+    response = await client.call('PUT', '/auth/profile', form);
+
+    if (mode === 'individual') {
+      check('profile image upload succeeds using only the three individual Cloudinary variables',
+        response.status === 200
+          && response.json?.data?.user?.avatarUrl?.startsWith('https://res.cloudinary.com/mock-cloud/image/upload/'),
+        JSON.stringify(response.json));
+    } else {
+      check('partial individual Cloudinary configuration returns a clear 503',
+        response.status === 503
+          && response.json?.message?.includes('Set all three CLOUDINARY_* values.'),
+        JSON.stringify(response.json));
+    }
+  } finally {
+    await stopApiServer(server);
+    const index = auxiliaryApiServers.indexOf(server);
+    if (index >= 0) auxiliaryApiServers.splice(index, 1);
   }
 }
 
@@ -252,9 +349,15 @@ async function main() {
     mockCloudinaryServer = await startMockCloudinaryServer(cloudinaryPort);
     const port = await getAvailableLocalPort();
     BASE = `http://127.0.0.1:${port}/api`;
-    apiServer = startApiServer(databaseUrl, port, cloudinaryPort);
+    apiServer = startApiServer(databaseUrl, port, cloudinaryPort, 'url');
     await waitForApiServer(apiServer);
     console.log('API test target: 127.0.0.1:5432/reusehub_api_test');
+    const legacyCloudinaryEnv = getTestProcessEnv(databaseUrl, port, cloudinaryPort, 'url');
+    check('legacy CLOUDINARY_URL configuration remains supported',
+      Boolean(legacyCloudinaryEnv.CLOUDINARY_URL)
+        && !legacyCloudinaryEnv.CLOUDINARY_CLOUD_NAME
+        && !legacyCloudinaryEnv.CLOUDINARY_API_KEY
+        && !legacyCloudinaryEnv.CLOUDINARY_API_SECRET);
 
     const stamp = Date.now();
     const a = new Client();
@@ -407,6 +510,23 @@ async function main() {
   failNextCloudinaryUpload = true;
   r = await a.call('PUT', '/auth/profile', cloudinaryFailureForm);
   check('profile update reports Cloudinary upload failure as 502', r.status === 502);
+  check('Cloudinary API failure logs its message and HTTP status safely',
+    apiServerLogOutput.includes('Simulated Cloudinary rejection.')
+      && apiServerLogOutput.includes('cloudinaryHttpStatus: 401')
+      && !apiServerLogOutput.includes('mock-api-secret')
+      && !apiServerLogOutput.includes('mock-api-key'));
+
+  const cloudinaryTransportFailureForm = new FormData();
+  cloudinaryTransportFailureForm.append('name', 'Must Not Be Saved');
+  cloudinaryTransportFailureForm.append('email', userA.email);
+  cloudinaryTransportFailureForm.append('image', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lfgAAAAASUVORK5CYII=', 'base64')], {
+    type: 'image/png',
+  }), 'avatar.png');
+  failNextCloudinaryTransport = true;
+  r = await a.call('PUT', '/auth/profile', cloudinaryTransportFailureForm);
+  check('profile update handles a Cloudinary transport failure (502)', r.status === 502);
+  check('Cloudinary transport failure logs nested error details',
+    apiServerLogOutput.includes('socket hang up') && apiServerLogOutput.includes('ECONNRESET'));
   r = await a.call('GET', '/auth/profile');
   check('profile remains unchanged after Cloudinary upload failure',
     r.status === 200
@@ -451,6 +571,8 @@ async function main() {
   r = await a.call('POST', '/materials/images', oversizedImageForm);
   check('image upload rejects files larger than 5 MB (413)', r.status === 413);
   check('API uploads were sent only to the local Cloudinary mock', mockCloudinaryUploadCount === 2);
+  await testIndividualCloudinaryConfiguration(databaseUrl, cloudinaryPort, 'individual', stamp);
+  await testIndividualCloudinaryConfiguration(databaseUrl, cloudinaryPort, 'partial', stamp);
 
   r = await a.call('POST', '/materials', { ...validMaterial, imageUrl: uploadedImageUrl, ownerId: userB?.id });
   check('create material (201)', r.status === 201 && r.json?.data?.id, JSON.stringify(r.json));
@@ -653,6 +775,7 @@ check(
     return failed ? 1 : 0;
   } finally {
     await stopApiServer(apiServer);
+    await Promise.all(auxiliaryApiServers.map((server) => stopApiServer(server)));
     await stopMockCloudinaryServer(mockCloudinaryServer);
     if (prisma) await prisma.$disconnect();
   }

@@ -80,7 +80,10 @@ cp frontend/.env.example frontend/.env
 | `PORT`         | Port the API listens on                              | `5000`                                               |
 | `FRONTEND_URL` | Allowed CORS origin(s), comma-separated              | `http://localhost:5173`                              |
 | `DATABASE_URL` | PostgreSQL connection string (**set your own**)      | `postgresql://USER:PASSWORD@localhost:5432/reusehub?schema=public` |
-| `CLOUDINARY_URL` | Cloudinary credentials (**set your own; never commit**) | `cloudinary://API_KEY:API_SECRET@CLOUD_NAME` |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name | Set from Cloudinary Console |
+| `CLOUDINARY_API_KEY` | Cloudinary API key (**never commit**) | Set from Cloudinary Console |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret (**never commit**) | Set from Cloudinary Console |
+| `CLOUDINARY_URL` | Optional legacy Cloudinary SDK configuration | `cloudinary://API_KEY:API_SECRET@CLOUD_NAME` |
 
 **frontend/.env**
 
@@ -88,7 +91,7 @@ cp frontend/.env.example frontend/.env
 |---------------------|-------------------------------|-----------------------------|
 | `VITE_API_BASE_URL` | Backend API base (with `/api`) | `http://localhost:5000/api` |
 
-Keep these consistent: the port in `VITE_API_BASE_URL` must equal the backend `PORT`, and `FRONTEND_URL` must equal the address Vite serves on (`http://localhost:5173`). The backend refuses to start if `DATABASE_URL` is missing, malformed, or still contains the placeholder values. Set `CLOUDINARY_URL` from your Cloudinary dashboard to enable profile and material image uploads. `.env` files are git-ignored.
+Keep these consistent: the port in `VITE_API_BASE_URL` must equal the backend `PORT`, and `FRONTEND_URL` must equal the address Vite serves on (`http://localhost:5173`). The backend refuses to start if `DATABASE_URL` is missing, malformed, or still contains the placeholder values. Set all three `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` values to enable profile and material image uploads; alternatively, use `CLOUDINARY_URL`. `.env` files are git-ignored.
 
 Password reset uses Resend. Set `RESEND_API_KEY` and `EMAIL_FROM` in the backend environment, using a sender address on a domain verified with Resend. Set `FRONTEND_URL` to the frontend origin; reset links use its first configured origin. Never put email-provider credentials in frontend environment variables or commit them.
 
@@ -213,7 +216,7 @@ Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_U
 
 ### Cloudinary image storage deployment
 
-Create a Cloudinary account and set `CLOUDINARY_URL` in the backend environment using the value from its dashboard. Both profile-picture and material uploads use Cloudinary, and PostgreSQL stores the returned secure HTTPS URL. The API accepts JPG/JPEG, PNG, and WebP images up to 5 MB and checks file signatures before upload. No database migration is needed.
+Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in the backend environment using values from the Cloudinary dashboard. `CLOUDINARY_URL` remains supported as an alternative. Both profile-picture and material uploads use Cloudinary, and PostgreSQL stores the returned secure HTTPS URL. The API accepts JPG/JPEG, PNG, and WebP images up to 5 MB and checks file signatures before upload. No database migration is needed.
 
 ### Automated API test
 
