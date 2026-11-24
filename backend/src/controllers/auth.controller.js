@@ -91,6 +91,7 @@ export const updateProfile = asyncHandler(async (req, res) => {
     throw new AppError(400, 'Please correct the highlighted fields.', errors);
   }
   if (req.file) data.avatarUrl = await saveUploadedImage(req.file);
+  else if (req.body?.avatarUrl === undefined) delete data.avatarUrl;
 
   try {
     const user = await prisma.user.update({

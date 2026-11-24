@@ -20,6 +20,7 @@ let mockCloudinaryServer;
 let uploadedImageUrl = '';
 let uploadedProfileImageUrl = '';
 let mockCloudinaryUploadCount = 0;
+let failNextCloudinaryUpload = false;
 const PASSWORD = 'TestPassw0rd!'; // throw-away test-account password
 
 let passed = 0;
@@ -124,8 +125,16 @@ async function startMockCloudinaryServer(port) {
       return;
     }
 
+    const shouldFail = failNextCloudinaryUpload;
+    failNextCloudinaryUpload = false;
     req.resume();
     req.on('end', () => {
+      if (shouldFail) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'Invalid Cloudinary credentials.' } }));
+        return;
+      }
+
       mockCloudinaryUploadCount += 1;
       const publicId = `reusehub-test-${mockCloudinaryUploadCount}`;
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -307,8 +316,29 @@ async function main() {
   r = await anon.call('PUT', '/auth/profile');
   check('unauthenticated profile update is rejected (401)', r.status === 401);
 
+  const profileNoImageForm = new FormData();
+  profileNoImageForm.append('name', 'Kousalya Ravula');
+  profileNoImageForm.append('email', userA.email);
+  profileNoImageForm.append('phone', '');
+  profileNoImageForm.append('location', '');
+  r = await a.call('PUT', '/auth/profile', profileNoImageForm);
+  check('profile update without an image accepts valid name and email',
+    r.status === 200 && r.json?.data?.user?.name === 'Kousalya Ravula' && r.json?.data?.user?.email === userA.email,
+    JSON.stringify(r.json));
+  check('profile update stores empty optional phone and location as null',
+    r.status === 200 && r.json?.data?.user?.phone === null && r.json?.data?.user?.location === null,
+    JSON.stringify(r.json));
+
+  r = await a.call('PUT', '/auth/profile', {
+    name: 'Kousalya Ravula',
+    email: 'not-an-email',
+    phone: '',
+    location: '',
+  });
+  check('profile update rejects an invalid email (400)', r.status === 400 && r.json?.errors?.email);
+
   const profileImageForm = new FormData();
-  profileImageForm.append('name', userA.name);
+  profileImageForm.append('name', 'Kousalya Ravula');
   profileImageForm.append('email', userA.email);
   profileImageForm.append('phone', '');
   profileImageForm.append('location', '');
@@ -317,15 +347,28 @@ async function main() {
   }), 'avatar.png');
   r = await a.call('PUT', '/auth/profile', profileImageForm);
   uploadedProfileImageUrl = r.json?.data?.user?.avatarUrl || '';
-  check('authenticated profile update stores a profile image',
+  check('authenticated profile update with an image stores the Cloudinary URL and profile fields',
     r.status === 200
+      && r.json?.data?.user?.name === 'Kousalya Ravula'
+      && r.json?.data?.user?.email === userA.email
+      && r.json?.data?.user?.phone === null
+      && r.json?.data?.user?.location === null
       && uploadedProfileImageUrl === 'https://res.cloudinary.com/mock-cloud/image/upload/v1/reusehub-test-1.png',
+    JSON.stringify(r.json));
+  const profileWithoutReplacementImageForm = new FormData();
+  profileWithoutReplacementImageForm.append('name', 'Kousalya Ravula');
+  profileWithoutReplacementImageForm.append('email', userA.email);
+  profileWithoutReplacementImageForm.append('phone', '');
+  profileWithoutReplacementImageForm.append('location', '');
+  r = await a.call('PUT', '/auth/profile', profileWithoutReplacementImageForm);
+  check('profile update without a new image preserves the existing avatar',
+    r.status === 200 && r.json?.data?.user?.avatarUrl === uploadedProfileImageUrl,
     JSON.stringify(r.json));
   r = await a.call('GET', '/auth/profile');
   check('profile image is persisted on the user account', r.status === 200 && r.json?.data?.user?.avatarUrl === uploadedProfileImageUrl);
   const cloudinaryAvatarUrl = 'https://res.cloudinary.com/mock-cloud/image/upload/v1/profile-url.png';
   r = await a.call('PUT', '/auth/profile', {
-    name: userA.name,
+    name: 'Kousalya Ravula',
     email: userA.email,
     avatarUrl: cloudinaryAvatarUrl,
   });
@@ -338,6 +381,38 @@ async function main() {
   invalidProfileImageForm.append('image', new Blob(['not an image'], { type: 'image/png' }), 'fake.png');
   r = await a.call('PUT', '/auth/profile', invalidProfileImageForm);
   check('profile image upload verifies the file signature (400)', r.status === 400);
+
+  const unsupportedProfileImageForm = new FormData();
+  unsupportedProfileImageForm.append('name', 'Kousalya Ravula');
+  unsupportedProfileImageForm.append('email', userA.email);
+  unsupportedProfileImageForm.append('image', new Blob(['not an image'], { type: 'image/gif' }), 'avatar.gif');
+  r = await a.call('PUT', '/auth/profile', unsupportedProfileImageForm);
+  check('profile image upload rejects unsupported formats (400)', r.status === 400);
+
+  const oversizedProfileImageForm = new FormData();
+  oversizedProfileImageForm.append('name', 'Kousalya Ravula');
+  oversizedProfileImageForm.append('email', userA.email);
+  oversizedProfileImageForm.append('image', new Blob([Buffer.alloc(5 * 1024 * 1024 + 1)], {
+    type: 'image/png',
+  }), 'large.png');
+  r = await a.call('PUT', '/auth/profile', oversizedProfileImageForm);
+  check('profile image upload rejects files larger than 5 MB (413)', r.status === 413);
+
+  const cloudinaryFailureForm = new FormData();
+  cloudinaryFailureForm.append('name', 'Must Not Be Saved');
+  cloudinaryFailureForm.append('email', userA.email);
+  cloudinaryFailureForm.append('image', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lfgAAAAASUVORK5CYII=', 'base64')], {
+    type: 'image/png',
+  }), 'avatar.png');
+  failNextCloudinaryUpload = true;
+  r = await a.call('PUT', '/auth/profile', cloudinaryFailureForm);
+  check('profile update reports Cloudinary upload failure as 502', r.status === 502);
+  r = await a.call('GET', '/auth/profile');
+  check('profile remains unchanged after Cloudinary upload failure',
+    r.status === 200
+      && r.json?.data?.user?.name === 'Kousalya Ravula'
+      && r.json?.data?.user?.avatarUrl === cloudinaryAvatarUrl,
+    JSON.stringify(r.json));
 
   r = await b.call('POST', '/auth/register', { name: 'Test B', email: `test-b-${stamp}@example.com`, password: PASSWORD });
   check('register user B (201)', r.status === 201);
