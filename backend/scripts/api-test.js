@@ -391,6 +391,10 @@ async function main() {
   const userA = r.json?.data?.user;
   r = await a.call('GET', '/auth/me');
   check('registration alone does not authenticate the user (401)', r.status === 401);
+  r = await anon.call('GET', '/notifications');
+  check('unauthenticated notification list is rejected (401)', r.status === 401);
+  r = await anon.call('GET', '/notifications/stream');
+  check('unauthenticated notification stream is rejected (401)', r.status === 401);
   r = await a.call('POST', '/auth/login', { email: `test-a-${stamp}@example.com`, password: PASSWORD });
   check('user A can log in after registration (200)', r.status === 200 && r.json?.data?.user?.id === userA?.id);
   check('login session cookie is httpOnly', r.setCookies.some((c) => /httponly/i.test(c)));
@@ -645,6 +649,38 @@ check(
   check('request message over 500 characters is rejected (400)', r.status === 400 && r.json?.errors?.message);
   r = await b.call('POST', `/requests/materials/${id}`);
   check('duplicate request is rejected (409)', r.status === 409);
+  r = await a.call('GET', '/notifications');
+  const firstOwnerNotification = r.json?.data?.find((notification) =>
+    notification.requestId === requestId && notification.type === 'NEW_MATERIAL_REQUEST');
+  check('new material request creates one owner notification',
+    r.status === 200 && Boolean(firstOwnerNotification) && r.json?.data?.filter((notification) =>
+      notification.requestId === requestId && notification.type === 'NEW_MATERIAL_REQUEST').length === 1);
+  r = await a.call('GET', '/notifications/unread-count');
+  check('owner unread count includes the new request notification',
+    r.status === 200 && r.json?.data?.unreadCount === 1);
+  r = await b.call('GET', '/notifications');
+  check('request notifications are isolated to the recipient',
+    r.status === 200 && !r.json?.data?.some((notification) => notification.id === firstOwnerNotification?.id));
+  r = await b.call('PATCH', `/notifications/${firstOwnerNotification?.id}/read`);
+  check('user cannot mark another user notification as read (404)', r.status === 404);
+  r = await b.call('DELETE', `/notifications/${firstOwnerNotification?.id}`);
+  check('user cannot delete another user notification (404)', r.status === 404);
+
+  const notificationStream = await fetch(`${BASE}/notifications/stream`, {
+    headers: { Cookie: a.cookie },
+  });
+  const streamReader = notificationStream.body.getReader();
+  const streamDecoder = new TextDecoder();
+  let streamText = '';
+  while (!streamText.includes('event: unread-count')) {
+    const { value, done } = await streamReader.read();
+    if (done) break;
+    streamText += streamDecoder.decode(value);
+  }
+  await streamReader.cancel();
+  check('authenticated notification stream sends the unread count',
+    notificationStream.status === 200 && streamText.includes('"unreadCount":1'));
+
   r = await c.call('POST', `/requests/materials/${id}`);
 const competingRequestId = r.json?.data?.id;
 
@@ -653,6 +689,8 @@ check(
   r.status === 201 && r.json?.data?.status === 'PENDING',
   JSON.stringify(r.json)
 );
+r = await b.call('PATCH', `/requests/${competingRequestId}/status`, { status: 'CANCELLED' });
+check('requester cannot cancel another user request (403)', r.status === 403);
   r = await b.call('GET', '/requests/mine');
   check('My Requests returns the requester’s material and Pending status',
     r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.material.id === id && request.status === 'PENDING'));
@@ -664,6 +702,23 @@ check(
   r = await a.call('PATCH', `/requests/${requestId}/status`, { status: 'ACCEPTED' });
   check('owner can accept a pending request and material becomes unavailable',
     r.status === 200 && r.json?.data?.status === 'ACCEPTED' && r.json?.data?.material?.isAvailable === false);
+  r = await b.call('GET', '/notifications');
+  const acceptedNotification = r.json?.data?.find((notification) =>
+    notification.requestId === requestId && notification.type === 'REQUEST_ACCEPTED');
+  check('accepted request notifies the requester', r.status === 200 && Boolean(acceptedNotification));
+  r = await c.call('GET', '/notifications');
+  const unavailableNotification = r.json?.data?.find((notification) =>
+    notification.requestId === competingRequestId && notification.type === 'MATERIAL_UNAVAILABLE');
+  check('accepting a request notifies other pending requesters that material is unavailable',
+    r.status === 200 && Boolean(unavailableNotification));
+
+  r = await b.call('PATCH', `/notifications/${acceptedNotification?.id}/read`);
+  check('recipient can mark their notification as read',
+    r.status === 200 && r.json?.data?.isRead === true);
+  r = await b.call('GET', '/notifications/unread-count');
+  check('marking one notification read updates unread count',
+    r.status === 200 && r.json?.data?.unreadCount === 0);
+
   r = await b.call('GET', '/requests/mine');
   check('requester sees Accepted status after owner accepts',
     r.status === 200 && r.json?.data?.some((request) => request.id === requestId && request.status === 'ACCEPTED' && request.material.isAvailable === false));
@@ -731,6 +786,10 @@ check(
   const rejectedRequestId = r.json?.data?.id;
   r = await a.call('PATCH', `/requests/${rejectedRequestId}/status`, { status: 'REJECTED' });
   check('owner can reject a pending request', r.status === 200 && r.json?.data?.status === 'REJECTED');
+  r = await b.call('GET', '/notifications');
+  check('rejected request notifies the requester',
+    r.status === 200 && r.json?.data?.some((notification) =>
+      notification.requestId === rejectedRequestId && notification.type === 'REQUEST_REJECTED'));
   r = await b.call('POST', `/requests/materials/${rejectMaterialId}`);
   const afterRejectedRequestId = r.json?.data?.id;
   check('requester can request again after rejection', r.status === 201 && r.json?.data?.status === 'PENDING');
@@ -744,6 +803,10 @@ check(
   check('request without a message is accepted and stored as null', r.status === 201 && r.json?.data?.message === null);
   r = await b.call('PATCH', `/requests/${cancelledRequestId}/status`, { status: 'CANCELLED' });
   check('requester can cancel their own pending request', r.status === 200 && r.json?.data?.status === 'CANCELLED');
+  r = await a.call('GET', '/notifications');
+  check('cancelled request notifies the material owner',
+    r.status === 200 && r.json?.data?.some((notification) =>
+      notification.requestId === cancelledRequestId && notification.type === 'REQUEST_CANCELLED'));
   r = await b.call('POST', `/requests/materials/${cancelMaterialId}`);
   const reRequestedId = r.json?.data?.id;
   check('requester can request again after cancellation', r.status === 201 && r.json?.data?.status === 'PENDING');
@@ -754,6 +817,63 @@ check(
     r.status === 200
       && r.json?.data?.some((request) => request.id === cancelledRequestId && request.status === 'CANCELLED')
       && r.json?.data?.some((request) => request.id === reRequestedId && request.status === 'PENDING'));
+
+  r = await a.call('POST', '/materials', { ...validMaterial, title: 'Manual unavailability notification test' });
+  const manualUnavailableMaterialId = r.json?.data?.id;
+  r = await c.call('POST', `/requests/materials/${manualUnavailableMaterialId}`);
+  const manualUnavailableRequestId = r.json?.data?.id;
+  r = await a.call('PATCH', `/materials/${manualUnavailableMaterialId}/availability`, { isAvailable: false });
+  check('marking material unavailable notifies its pending requester', r.status === 200);
+  r = await c.call('GET', '/notifications');
+  check('manual unavailability notification references the pending request',
+    r.status === 200 && r.json?.data?.some((notification) =>
+      notification.requestId === manualUnavailableRequestId && notification.type === 'MATERIAL_UNAVAILABLE'));
+  r = await a.call('PATCH', `/materials/${manualUnavailableMaterialId}/availability`, { isAvailable: false });
+  check('repeating unavailable state does not create another notification', r.status === 200);
+  r = await c.call('GET', '/notifications');
+  check('manual unavailability event is not duplicated',
+    r.status === 200 && r.json?.data?.filter((notification) =>
+      notification.requestId === manualUnavailableRequestId && notification.type === 'MATERIAL_UNAVAILABLE').length === 1);
+
+  r = await a.call('PATCH', '/notifications/read-all');
+  check('recipient can mark all notifications as read',
+    r.status === 200 && r.json?.data?.updatedCount > 0);
+  r = await a.call('GET', '/notifications/unread-count');
+  check('mark-all-read clears the recipient unread count',
+    r.status === 200 && r.json?.data?.unreadCount === 0);
+  r = await c.call('DELETE', `/notifications/${unavailableNotification?.id}`);
+  check('recipient can delete their own notification', r.status === 200 && r.json?.data?.deleted === true);
+  r = await c.call('GET', '/notifications');
+  check('deleted notification is removed from the recipient list',
+    r.status === 200 && !r.json?.data?.some((notification) => notification.id === unavailableNotification?.id));
+
+  r = await a.call('POST', '/materials', { ...validMaterial, title: 'Concurrent acceptance test material' });
+  const concurrentMaterialId = r.json?.data?.id;
+  r = await b.call('POST', `/requests/materials/${concurrentMaterialId}`);
+  const concurrentRequestB = r.json?.data?.id;
+  r = await c.call('POST', `/requests/materials/${concurrentMaterialId}`);
+  const concurrentRequestC = r.json?.data?.id;
+  const concurrentAcceptResults = await Promise.all([
+    a.call('PATCH', `/requests/${concurrentRequestB}/status`, { status: 'ACCEPTED' }),
+    a.call('PATCH', `/requests/${concurrentRequestC}/status`, { status: 'ACCEPTED' }),
+  ]);
+  const acceptedResults = concurrentAcceptResults.filter((result) => result.status === 200);
+  const conflictResults = concurrentAcceptResults.filter((result) => result.status === 409);
+  check('concurrent acceptance permits exactly one winner',
+    acceptedResults.length === 1 && conflictResults.length === 1,
+    JSON.stringify(concurrentAcceptResults.map((result) => ({ status: result.status, json: result.json }))));
+  const winningRequestId = acceptedResults[0]?.json?.data?.id;
+  const losingRequestId = winningRequestId === concurrentRequestB ? concurrentRequestC : concurrentRequestB;
+  const winningRequester = winningRequestId === concurrentRequestB ? b : c;
+  const losingRequester = winningRequestId === concurrentRequestB ? c : b;
+  r = await winningRequester.call('GET', '/notifications');
+  check('concurrent acceptance notifies the winning requester',
+    r.status === 200 && r.json?.data?.some((notification) =>
+      notification.requestId === winningRequestId && notification.type === 'REQUEST_ACCEPTED'));
+  r = await losingRequester.call('GET', '/notifications');
+  check('concurrent acceptance notifies the other requester that the material is unavailable',
+    r.status === 200 && r.json?.data?.some((notification) =>
+      notification.requestId === losingRequestId && notification.type === 'MATERIAL_UNAVAILABLE'));
 
   r = await a.call('DELETE', `/materials/${id}`);
   check('owner can delete listing (200)', r.status === 200);

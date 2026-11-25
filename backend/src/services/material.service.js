@@ -1,4 +1,5 @@
 import { prisma } from '../config/database.js';
+import { notifyPendingRequestersOfUnavailableMaterial } from './notifications.service.js';
 
 // Never expose the owner's email or password hash in listings.
 const ownerSelect = { select: { id: true, name: true } };
@@ -39,7 +40,30 @@ export const findMaterialById = (id) => prisma.material.findUnique({ where: { id
 export const createMaterial = (ownerId, data) =>
   prisma.material.create({ data: { ...data, ownerId }, include: { owner: ownerSelect } });
 
-export const updateMaterial = (id, data) =>
-  prisma.material.update({ where: { id }, data, include: { owner: ownerSelect } });
+export async function updateMaterial(id, data) {
+  return prisma.$transaction(async (tx) => {
+    const [existing] = await tx.$queryRaw`
+      SELECT "isAvailable"
+      FROM "materials"
+      WHERE "id" = ${id}
+      FOR UPDATE
+    `;
+    const material = await tx.material.update({
+      where: { id },
+      data,
+      include: { owner: ownerSelect },
+    });
+
+    if (existing?.isAvailable && data.isAvailable === false) {
+      await notifyPendingRequestersOfUnavailableMaterial(tx, {
+        materialId: id,
+        title: 'Requested material is no longer available',
+        message: `${material.owner.name} marked ${material.title} unavailable.`,
+      });
+    }
+
+    return material;
+  });
+}
 
 export const deleteMaterial = (id) => prisma.material.delete({ where: { id } });

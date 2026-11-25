@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import UserAvatar from './UserAvatar.jsx';
+import NotificationBell from './NotificationBell.jsx';
 
 const linkClass = 'rounded px-2 py-1 text-sm font-medium text-slate-700 hover:text-green-800';
 
@@ -74,6 +75,7 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {!loading && user && <NotificationBell userId={user.id} />}
           {loading ? null : user ? (
             <div className="relative" ref={accountMenuRef}>
               <button

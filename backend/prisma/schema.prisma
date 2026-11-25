@@ -32,6 +32,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   materials           Material[]
   requestsMade        MaterialRequest[]    @relation("MaterialRequestRequester")
+  notifications       Notification[]
 
   @@map("users")
 }
@@ -97,6 +98,7 @@ model Material {
   ownerId     Int
   owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   requests    MaterialRequest[]
+  notifications Notification[]
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
 
@@ -122,6 +124,7 @@ model MaterialRequest {
   status      MaterialRequestStatus @default(PENDING)
   material    Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
   requester   User                  @relation("MaterialRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  notifications Notification[]
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
@@ -129,4 +132,33 @@ model MaterialRequest {
   @@index([materialId, status])
   @@index([materialId, createdAt])
   @@map("material_requests")
+}
+
+enum NotificationType {
+  NEW_MATERIAL_REQUEST
+  REQUEST_ACCEPTED
+  REQUEST_REJECTED
+  REQUEST_CANCELLED
+  MATERIAL_UNAVAILABLE
+}
+
+model Notification {
+  id          Int              @id @default(autoincrement())
+  recipientId Int
+  materialId  Int?
+  requestId   Int?
+  type        NotificationType
+  title       String           @db.VarChar(120)
+  message     String           @db.VarChar(500)
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  recipient   User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  material    Material?        @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  request     MaterialRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@unique([recipientId, requestId, type])
+  @@index([recipientId, isRead, createdAt])
+  @@index([materialId])
+  @@index([requestId])
+  @@map("notifications")
 }

@@ -125,3 +125,19 @@ export const requestsApi = {
   updateStatus: (id, status) =>
     request(`/requests/${id}/status`, { method: 'PATCH', body: { status } }),
 };
+
+export const notificationsApi = {
+  list: () => request('/notifications'),
+  unreadCount: () => request('/notifications/unread-count'),
+  markRead: (id) => request(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllRead: () => request('/notifications/read-all', { method: 'PATCH' }),
+  remove: (id) => request(`/notifications/${id}`, { method: 'DELETE' }),
+  subscribeUnreadCount: (onUpdate) => {
+    const stream = new EventSource(`${API_BASE_URL}/notifications/stream`, { withCredentials: true });
+    stream.addEventListener('unread-count', (event) => {
+      const { unreadCount } = JSON.parse(event.data);
+      if (Number.isInteger(unreadCount) && unreadCount >= 0) onUpdate(unreadCount);
+    });
+    return stream;
+  },
+};

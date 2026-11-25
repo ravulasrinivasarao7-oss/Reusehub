@@ -2,8 +2,8 @@
 
 ReUseHub is a web application where businesses, offices, workshops, printing shops, and individuals can list unused materials (cardboard, wood, paper, plastic, metal, fabric, glass, …) so others can reuse them instead of throwing them away.
 
-**Status: Part 1 (setup, homepage, health checks), Part 2 (accounts, sessions, password reset, material listings), and material requests/approvals.**
-Inventory, notifications, statistics, and the admin dashboard are not implemented yet.
+**Status: Part 1 (setup, homepage, health checks), Part 2 (accounts, sessions, password reset, material listings), material requests/approvals, and in-app request notifications.**
+Inventory statistics and the admin dashboard are not implemented yet.
 
 ## Technology stack
 
@@ -175,7 +175,7 @@ Password reset also requires `RESEND_API_KEY` and `EMAIL_FROM` in the backend en
 
 ### Database models
 
-`User`, `Session`, `PasswordResetToken`, `Material`, and `MaterialRequest` (+ enums `MaterialCategory`, `MaterialCondition`, `MaterialRequestStatus`). A material belongs to its owner (`ownerId`, deleted with the user), and requests link a requester to a material with an optional 500-character message. A partial unique index prevents more than one pending request per requester/material while preserving request history. Request statuses are `PENDING`, `ACCEPTED`, `REJECTED`, and `CANCELLED`. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Password reset tokens are SHA-256 hashed in the database, expire after 30 minutes, and are single-use.
+`User`, `Session`, `PasswordResetToken`, `Material`, `MaterialRequest`, and `Notification` (+ enums `MaterialCategory`, `MaterialCondition`, `MaterialRequestStatus`, and `NotificationType`). A material belongs to its owner (`ownerId`, deleted with the user), and requests link a requester to a material with an optional 500-character message. A partial unique index prevents more than one pending request per requester/material while preserving request history. Request statuses are `PENDING`, `ACCEPTED`, `REJECTED`, and `CANCELLED`. Notification records are scoped to a recipient and created in the same transaction as the request event. Passwords are stored only as bcrypt hashes; sessions store only a SHA-256 hash of a random token, which the browser keeps in an httpOnly cookie (`reusehub_session`, 7 days). Password reset tokens are SHA-256 hashed in the database, expire after 30 minutes, and are single-use.
 
 ### API
 
@@ -201,6 +201,12 @@ All responses are JSON: `{ "success": true, "data": ..., "meta": ... }` or `{ "s
 | `GET /api/requests/mine` | yes | List your material requests and statuses |
 | `GET /api/requests/received` | yes | List requests for your materials |
 | `PATCH /api/requests/:id/status` | yes | Owner accepts/rejects, or requester cancels; body `{ "status": "ACCEPTED"|"REJECTED"|"CANCELLED" }` |
+| `GET /api/notifications` | yes | List your notifications and unread count |
+| `GET /api/notifications/unread-count` | yes | Get your unread notification count |
+| `GET /api/notifications/stream` | yes | Server-sent events for unread-count updates |
+| `PATCH /api/notifications/:id/read` | yes | Mark one of your notifications as read |
+| `PATCH /api/notifications/read-all` | yes | Mark all your notifications as read |
+| `DELETE /api/notifications/:id` | yes | Delete one of your notifications |
 
 Status codes: 400 validation, 401 not logged in, 403 unauthorized action, 404 not found, 409 conflict (for example duplicate request or unavailable material), 429 too many login attempts, 503 database or image storage unavailable. Categories: `CARDBOARD WOOD PAPER PLASTIC METAL FABRIC GLASS OTHER`. Materials can use existing http/https image URLs, including Cloudinary HTTPS URLs, or uploaded JPG, JPEG, PNG, and WebP files. New profile and material image uploads are stored in Cloudinary; existing legacy `/uploads` files can still be served from `MATERIAL_UPLOAD_DIR`.
 
@@ -208,11 +214,20 @@ Public material responses include listing information and the owner's display na
 
 ### Frontend routes
 
-`/` home, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/materials` (public search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`, `/my-requests`, `/received-requests`. Material search/details are public; material mutations and personal dashboards redirect to login when logged out. Signed-in users visiting Forgot Password are redirected to materials.
+`/` home, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/materials` (public search + filters), `/materials/new`, `/materials/:id`, `/materials/:id/edit`, `/my-listings`, `/my-requests`, `/received-requests`. The authenticated navbar includes a notification bell with unread count and recipient-scoped read/delete actions. Material search/details are public; material mutations and personal dashboards redirect to login when logged out. Signed-in users visiting Forgot Password are redirected to materials.
 
 ### Database migrations and password reset deployment
 
 Configure `RESEND_API_KEY`, `EMAIL_FROM`, and the frontend origin in `FRONTEND_URL` on the backend host. Review the additive migrations, then apply approved migrations with `npx prisma migrate deploy`. The material-request migration adds the status enum and `material_requests` table; the request-message migration adds a nullable `message` column (up to 500 characters). They do not recreate or remove existing records. For an existing database with tables but no Prisma migration history, first verify its schema matches `backend/prisma/migrations/0_init/migration.sql`; only then baseline that initial migration once with `npx prisma migrate resolve --applied 0_init`, followed by `npx prisma migrate deploy`. Do not run `migrate reset` on a database with user data. Do not apply migrations to production until they have been reviewed and approved.
+
+The notifications migration adds the `NotificationType` enum, `notifications` table, indexes, and foreign keys without altering existing user, material, or request records.
+
+#### Deploying the notifications migration to Render
+
+1. Review `backend/prisma/migrations/20261124230000_add_notifications/migration.sql` and confirm Render's backend `DATABASE_URL` points to the intended production database.
+2. In the Render backend service, set the service root directory to `backend` (or run commands from that directory). Configure `npm run prisma:deploy` as the **Pre-Deploy Command** so the additive migration completes before the new backend version receives traffic. If your Render plan does not provide a pre-deploy command, run `npm run prisma:deploy` once in the service shell before deploying the backend.
+3. Deploy the backend and frontend using the existing service settings. No new environment variables are required; keep the frontend's `VITE_API_BASE_URL` pointed at the backend's `/api` URL.
+4. Verify the backend health endpoint, then sign in and test a request lifecycle and the navbar unread count. Check Render logs for migration or API errors; do not print environment variables or database credentials.
 
 ### Cloudinary image storage deployment
 
@@ -220,14 +235,14 @@ Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` i
 
 ### Automated API test
 
-With the backend running and migrations applied to a **development/test database**:
+The test runner applies migrations to the isolated local `reusehub_api_test` PostgreSQL database and starts its own API processes. Ensure that local test database is available; do not point this test at production:
 
 ```bash
 cd backend
 npm run test:api       # npm.cmd run test:api on restricted PowerShell
 ```
 
-It registers throw-away users and checks account creation/login, public browsing and filtering, image upload and retrieval, materials, optional request messages, duplicate and ownership restrictions, requester-visible acceptance, accepting/rejecting/cancelling, availability, and logout. It leaves test records in your dev database.
+It registers throw-away users and checks account creation/login, public browsing and filtering, Cloudinary configuration and image upload, profile updates, material requests, transactional notifications, recipient isolation, unread-count streaming, availability changes, concurrent acceptance, and logout.
 
 ## Troubleshooting
 

@@ -6,6 +6,7 @@ import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import materialsRoutes from './routes/materials.routes.js';
 import requestsRoutes from './routes/requests.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
 import { originCheck } from './middleware/originCheck.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandlers.js';
 
@@ -30,6 +31,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/materials', materialsRoutes);
 app.use('/api/requests', requestsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
